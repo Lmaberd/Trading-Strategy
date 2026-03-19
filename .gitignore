@@ -50,3 +50,7 @@ pip-wheel-metadata/
 .DS_Store
 Thumbs.db
 /INF2006_Data_Students
+
+# Strategy testing cache (analytics, lookups, sim lookups)
+cache/
+/cache
