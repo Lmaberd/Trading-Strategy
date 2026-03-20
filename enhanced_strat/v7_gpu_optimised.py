@@ -35,13 +35,15 @@ class EnhancedStrategy(BaseStrategy):
     """
 
     def __init__(self, finbert_pipeline=None, rsi_threshold=40, vol_mult=2,
-                 s1_atr_mult=2, s2_atr_mult=2, sleeve2_exit_weeks=5):
+                 s1_atr_mult=2, s2_atr_mult=2, sleeve2_exit_weeks=5,
+                 max_transcript_chars=10000):
         super().__init__(finbert_pipeline)
         self.rsi_threshold = rsi_threshold
         self.vol_mult = vol_mult
         self.s1_atr_mult = s1_atr_mult
         self.s2_atr_mult = s2_atr_mult
         self.sleeve2_exit_weeks = sleeve2_exit_weeks
+        self.max_transcript_chars = max_transcript_chars
 
         # Universe selection state
         self.universe = set()
@@ -384,11 +386,23 @@ class EnhancedStrategy(BaseStrategy):
     # LLM / FINBERT ANALYSIS
     # =====================================================================
 
+    def _trim_transcript(self, transcript):
+        transcript = str(transcript).strip()
+        if not transcript:
+            return ""
+
+        if len(transcript) <= self.max_transcript_chars:
+            return transcript
+
+        head_chars = self.max_transcript_chars // 2
+        tail_chars = self.max_transcript_chars - head_chars
+        return transcript[:head_chars] + "\n" + transcript[-tail_chars:]
+
     def _chunk_transcript(self, transcript):
         if transcript is None:
             return []
 
-        transcript = str(transcript).strip()
+        transcript = self._trim_transcript(transcript)
         if not transcript:
             return []
 
