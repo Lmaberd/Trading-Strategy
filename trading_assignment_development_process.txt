@@ -1,0 +1,119 @@
+Development Process for trading_assignment.ipynb
+================================================
+
+This notebook documents the evolution of the project from an initial network-based inefficiency idea to a final illiquidity-based trading strategy. The key point is that the strategy switch was not driven by optimization. Optimization was deliberately left to the end of the pipeline, after the strategy family had already been chosen.
+
+Overall Research Direction
+--------------------------
+
+The unifying idea across the project was delayed price discovery. In every version, the goal was to find situations where information was not immediately incorporated into prices, and to design a strategy that could systematically exploit that delay.
+
+The development process can therefore be explained as a refinement of the inefficiency hypothesis:
+
+1. Start with a network inefficiency hypothesis.
+2. Test whether cross-stock relationships can reveal delayed information transmission.
+3. Realise that the hypothesis depends on many layered assumptions.
+4. Pivot to an illiquidity inefficiency hypothesis, which is more direct and economically grounded.
+5. Add and tune drawdown controls.
+6. Only after the strategy logic was settled, optimize implementation speed.
+
+Stage 1: EDA for Louvain Clustering
+-----------------------------------
+
+The first stage of the project was exploratory data analysis for the Louvain clustering approach. The idea was to study whether the market exhibited meaningful leader-follower structure across stocks. This involved looking at return behaviour, correlation structure, and signs of statistical inefficiency. The purpose of this EDA was to determine whether clusters of related stocks could be identified and whether signals from cluster leaders could be propagated to follower stocks.
+
+This led to the initial network inefficiency hypothesis:
+
+If some stocks are statistically inefficient, then leader-follower relationships inside correlation clusters may reveal delayed information transmission.
+
+This hypothesis motivated EnhancedStrategy V1. In V1, cross-stock relationships and Louvain clusters were used to identify leader-follower effects. The idea was that if a leader stock within a cluster showed a strong signal, related follower stocks might not have fully adjusted yet, creating an opportunity to trade the lag.
+
+Stage 2: V2 and Drawdown Control in the Network Strategy
+--------------------------------------------------------
+
+V2 was not a new core hypothesis. It was an attempt to improve the risk management of the same network-based idea. In particular, V2 replaced a simple hard stop-loss with an ATR-based trailing stop-loss.
+
+The motivation for this change was practical. A fixed hard stop-loss can cut trades too early or fail to adapt to changing volatility. By using ATR as a volatility-adjusted trailing stop, the strategy could respond more dynamically to market conditions and potentially manage drawdowns better while still allowing profitable trades room to develop.
+
+So the role of V2 in the development process was:
+
+- V1 established the network inefficiency concept.
+- V2 kept the same concept but improved the exit logic to better manage drawdowns.
+
+Why the Network Inefficiency Hypothesis Was Eventually Reconsidered
+-------------------------------------------------------------------
+
+The network inefficiency hypothesis was a useful exploratory starting point, but it relied on several assumptions at once:
+
+- Ljung-Box had to be a valid proxy for inefficiency.
+- Weekly correlation networks had to be reasonably stable over time.
+- Louvain clusters had to be economically meaningful, not just statistically convenient.
+- Cluster leaders had to transmit information to follower stocks in a tradable way.
+
+This made the approach interesting, but also conceptually indirect. It tried to infer delayed price discovery from the structure of relationships between stocks rather than from stock characteristics themselves.
+
+In other words, the network approach asked:
+
+"How does information spread between stocks?"
+
+That was a valid research question, but it was not the most direct way to target persistent mispricing.
+
+Stage 3: Pivot to the Illiquidity Inefficiency Hypothesis
+---------------------------------------------------------
+
+The project then pivoted in EnhancedStrategy V3 toward an illiquidity inefficiency hypothesis.
+
+The reason for this switch was conceptual rather than computational. Illiquidity provides a more direct and economically grounded explanation for delayed price adjustment. If a stock is less liquid, information should be incorporated into price more slowly, so mispricing and post-news drift should persist longer.
+
+This made Amihud illiquidity a more direct way to target delayed price discovery than inferring it indirectly through network structure.
+
+The logic of the pivot can be summarized like this:
+
+- The network strategy inferred inefficiency through market structure.
+- The illiquidity strategy targeted inefficiency through stock characteristics.
+
+This made the new framework easier to justify in financial terms. It also aligned naturally with the other signals used later in the strategy, such as sentiment acceleration, RSI mean reversion, and volume-confirmed momentum. Those signals are easier to interpret when applied to a universe of stocks where slow information incorporation is already expected.
+
+So the switch from Louvain clustering to Amihud illiquidity should be explained as a refinement of the economic hypothesis, not as a response to implementation issues.
+
+Stage 4: Managing Drawdowns After the Pivot
+-------------------------------------------
+
+Once the strategy moved to the Amihud-based framework in V3, the results showed that the strategy could generate attractive opportunities, but the drawdowns were too large. This led to the next development phase: adding drawdown management and defensive overlays.
+
+The aim at this point was to keep the illiquidity-based alpha source while controlling tail risk and reducing severe losses. However, this introduced a trade-off. As more defensive rules were added, the strategy became safer, but the returns also fell significantly.
+
+This created an important design lesson in the project:
+
+Too little drawdown control leaves the strategy exposed to large losses, but too much drawdown control suppresses the alpha and reduces upside.
+
+The later versions were therefore used to rebalance this trade-off. The heavy defensive layer was useful for understanding the risk profile, but it became clear that it was overly restrictive. I then reduced some of the drawdown management to allow the strategy more room to capture returns. This process ultimately landed at V5, which represented a more balanced compromise between risk control and performance.
+
+Stage 5: Optimization Was Done Only After Strategy Selection
+------------------------------------------------------------
+
+Only after the strategy direction had been finalized did I begin optimizing the implementation. This is an important part of the development story because it shows that performance optimization did not drive the change in research hypothesis.
+
+The sequence was:
+
+- V1 to V2: network inefficiency exploration and risk-management refinement.
+- V3 to V5: pivot to illiquidity inefficiency, followed by drawdown management and rebalancing of risk versus return.
+- V6 to V7: implementation optimization after the strategy logic was already decided.
+
+This means the move away from Louvain clustering was made before optimization. The reason for the switch was that the illiquidity hypothesis was more direct, more economically interpretable, and more suitable as the core thesis of the project.
+
+Final Positioning
+-----------------
+
+The development process of the notebook can therefore be presented as an evolution in hypothesis quality:
+
+- The project started with an exploratory network-based view of inefficiency.
+- It then moved toward a characteristic-based view of inefficiency using Amihud illiquidity.
+- Risk management was then layered in and adjusted to manage the trade-off between drawdown control and return generation.
+- Only at the end was the chosen strategy optimized for computational efficiency.
+
+One concise way to describe the journey is:
+
+The project began by asking how information spreads between stocks, and ended by asking which stocks are structurally slowest to absorb information.
+
+That sentence captures the conceptual link between the Louvain strategy and the Amihud strategy while also explaining why the final strategy used the illiquidity framework.
