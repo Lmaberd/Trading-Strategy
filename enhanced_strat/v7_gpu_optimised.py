@@ -175,6 +175,155 @@ class EnhancedStrategy(BaseStrategy):
         print(f"  Weekly analytics aligned: {len(weekly_df):,} rows")
         return build_analytics_lookup_vectorised(weekly_df)
 
+    def _build_weekly_market_views(self, analytics_lookup):
+        """
+        Transform weekly analytics into week-indexed views to avoid repeated
+        nested lookups during the backtest.
+        """
+        weekly_records = defaultdict(list)
+        weekly_prices = defaultdict(dict)
+
+        for ticker, records in analytics_lookup.items():
+            for week_date, analytics in records:
+                weekly_records[week_date].append((ticker, analytics))
+                price = analytics.get('close')
+                if price is not None and not np.isnan(price):
+                    weekly_prices[week_date][ticker] = price
+
+        return weekly_records, weekly_prices
+
+    def _build_weekly_earnings_lookup(self):
+        if self.earnings is None or self.earnings.empty:
+            return {}
+
+        earnings_df = self.earnings[['ticker', 'date', 'transcript']].copy()
+        earnings_df['date'] = pd.to_datetime(earnings_df['date'])
+        earnings_df['week_end'] = (
+            earnings_df['date']
+            + pd.to_timedelta((4 - earnings_df['date'].dt.weekday) % 7, unit='D')
+        ).dt.strftime('%Y-%m-%d')
+
+        latest_earnings = (
+            earnings_df.sort_values(['ticker', 'date'])
+            .drop_duplicates(subset=['ticker', 'week_end'], keep='last')
+        )
+
+        return {
+            (row.ticker, row.week_end): row.transcript
+            for row in latest_earnings.itertuples(index=False)
+        }
+
+    def _buy_target(self, portfolio, ticker, price, date, target_value=5000):
+        if ticker in portfolio['positions']:
+            return 0
+        max_shares = int(target_value // price)
+        if max_shares <= 0:
+            return 0
+
+        cost = min(max_shares * price, portfolio['cash'])
+        shares = int(cost // price)
+        if shares <= 0:
+            return 0
+
+        actual_cost = shares * price
+        portfolio['cash'] -= actual_cost
+        portfolio['positions'][ticker] = {'shares': shares, 'buy_price': price}
+        portfolio['trades'].append({
+            'date': date,
+            'ticker': ticker,
+            'action': 'BUY',
+            'shares': shares,
+            'price': price,
+            'value': actual_cost
+        })
+        return shares
+
+    def _sell_position(self, portfolio, ticker, price, date):
+        if ticker not in portfolio['positions']:
+            return 0
+
+        position = portfolio['positions'][ticker]
+        shares = position['shares']
+        proceeds = shares * price
+        del portfolio['positions'][ticker]
+        portfolio['cash'] += proceeds
+        portfolio['trades'].append({
+            'date': date,
+            'ticker': ticker,
+            'action': 'SELL',
+            'shares': shares,
+            'price': price,
+            'value': proceeds
+        })
+        return shares
+
+    def _get_portfolio_value(self, portfolio, current_prices):
+        total = portfolio['cash']
+        for ticker, pos in portfolio['positions'].items():
+            price = current_prices.get(ticker)
+            if price is not None:
+                total += pos['shares'] * price
+        return total
+
+    def _get_portfolio_state(self, portfolio, current_prices):
+        return {
+            'cash': portfolio['cash'],
+            'positions': {
+                ticker: {'shares': pos['shares'], 'buy_price': pos['buy_price']}
+                for ticker, pos in portfolio['positions'].items()
+            },
+            'total_value': self._get_portfolio_value(portfolio, current_prices)
+        }
+
+    def _run_fast_backtest(self, weekly_records, weekly_prices, weekly_earnings, verbose=False):
+        """
+        Faster replacement for TradingSimulation.run().
+        It preserves the sequential weekly decision process, but removes the
+        repeated per-ticker analytics scans and price-history fallbacks.
+        """
+        print("Running fast backtest loop...")
+        portfolio = {
+            'cash': STARTING_CASH,
+            'positions': {},
+            'trades': []
+        }
+        portfolio_history = []
+
+        for i, week_date in enumerate(self.weekly_schedule):
+            if verbose and i % 10 == 0:
+                print(f"  Week {i+1}/{len(self.weekly_schedule)}: {week_date}")
+
+            current_prices = weekly_prices.get(week_date, {})
+            portfolio_state = self._get_portfolio_state(portfolio, current_prices)
+
+            for ticker, analytics in weekly_records.get(week_date, []):
+                transcript = weekly_earnings.get((ticker, week_date))
+                decision = self.make_decision(ticker, week_date, transcript, portfolio_state, analytics)
+                price = analytics.get('close')
+                if price is None or np.isnan(price) or price <= 0:
+                    continue
+
+                if decision == 'BUY':
+                    self._buy_target(portfolio, ticker, price, week_date, target_value=5000)
+                elif decision == 'SELL':
+                    self._sell_position(portfolio, ticker, price, week_date)
+
+            portfolio_history.append({
+                'date': week_date,
+                'portfolio_value': self._get_portfolio_value(portfolio, current_prices),
+                'cash': portfolio['cash'],
+                'positions': len(portfolio['positions'])
+            })
+
+        final_date = self.weekly_schedule[-1]
+        final_prices = weekly_prices.get(final_date, {})
+        return {
+            'trades': portfolio['trades'],
+            'portfolio_history': portfolio_history,
+            'final_portfolio': self._get_portfolio_state(portfolio, final_prices),
+            'final_prices': final_prices
+        }
+
     # =====================================================================
     # UNIVERSE SELECTION
     # =====================================================================
@@ -308,13 +457,18 @@ class EnhancedStrategy(BaseStrategy):
             neu = len(valid_chunks)
         return pos, neg, neu
 
-    def _precompute_llm_analysis(self):
+    def _precompute_llm_analysis(self, allowed_tickers=None):
         self.precomputed_llm_results = {}
         if self.finbert_pipeline is None or self.earnings is None or self.earnings.empty:
             return
 
         print("Precomputing transcript sentiment in batched mode...")
         earnings_df = self.earnings[['ticker', 'date', 'transcript']].copy()
+        if allowed_tickers:
+            earnings_df = earnings_df[earnings_df['ticker'].isin(allowed_tickers)]
+        if earnings_df.empty:
+            print("  No eligible earnings transcripts for precomputation")
+            return
         earnings_df['date'] = pd.to_datetime(earnings_df['date']).dt.strftime('%Y-%m-%d')
 
         chunk_texts = []
@@ -509,10 +663,11 @@ class EnhancedStrategy(BaseStrategy):
 
         print("Running evaluation...")
         analytics = self.calculate_analytics(self.prices)
-        self._precompute_llm_analysis()
         self._precompute_monthly_universes(self.weekly_schedule)
+        llm_tickers = set().union(*self.precomputed_universes.values()) if self.precomputed_universes else None
+        self._precompute_llm_analysis(llm_tickers)
         analytics_lookup = self._build_weekly_analytics_lookup(analytics, self.weekly_schedule)
+        weekly_records, weekly_prices = self._build_weekly_market_views(analytics_lookup)
+        weekly_earnings = self._build_weekly_earnings_lookup()
 
-        print("Running backtest simulation...")
-        sim = TradingSimulation(self.prices, self.earnings, STARTING_CASH)
-        return sim.run(lambda t, d, tr, ps, a: self.make_decision(t, d, tr, ps, a), analytics_lookup, verbose)
+        return self._run_fast_backtest(weekly_records, weekly_prices, weekly_earnings, verbose)
