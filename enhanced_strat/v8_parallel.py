@@ -698,14 +698,15 @@ class EnhancedStrategy(BaseStrategy):
         self.weekly_schedule = self._build_weekly_schedule(self.prices)
 
         print("Running evaluation...")
-        with ThreadPoolExecutor(max_workers=self.preprocessing_workers) as executor:
+        # CPU-heavy tasks run in parallel threads; GPU inference stays on main thread
+        # to avoid CUDA batching issues when called from a worker thread
+        with ThreadPoolExecutor(max_workers=2) as executor:
             analytics_future = executor.submit(self.calculate_analytics, self.prices)
             earnings_future = executor.submit(self._build_weekly_earnings_lookup)
-            sentiment_future = executor.submit(self._precompute_llm_analysis)
-
             analytics = analytics_future.result()
             weekly_earnings = earnings_future.result()
-            sentiment_future.result()
+
+        self._precompute_llm_analysis()
 
         with ThreadPoolExecutor(max_workers=2) as executor:
             universe_future = executor.submit(self._precompute_monthly_universes, self.weekly_schedule)

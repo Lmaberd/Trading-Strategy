@@ -1,16 +1,12 @@
 """
-EnhancedStrategy: Multi-Sleeve Trading Strategy (GPU-Optimized)
-================================================================
-Extends BaseStrategy with:
-  - Step 1: Universe selection via volatility + Amihud illiquidity composite scoring
-  - Step 2: FinBERT sentiment acceleration with bulk batched inference
-  - Step 3: Dual-sleeve entry triggers (RSI mean reversion + volume momentum / sentiment acceleration)
-  - Step 4: Time-based and ATR-based trailing-stop exits
-
-GPU optimizations applied:
-  - Vectorized Pandas groupby for analytics
-  - Bulk FinBERT transcript precomputation so inference can run in large GPU batches
-  - Weekly-aligned analytics lookup to reduce repeated daily-history scans during the backtest
+EnhancedStrategy V10: Universe-Filtered Sentiment
+==================================================
+Built on V9. Key changes:
+  - evaluate() reordered so universe is built BEFORE FinBERT inference
+  - _precompute_llm_analysis() called with only tickers that ever appear
+    in the monthly universe (~20% of all tickers) → ~70-80% less GPU work
+  - max_transcript_chars reduced 10000 → 2000 (fewer chunks per transcript,
+    ~5x less BERT forward passes with minimal quality loss)
 """
 # Depends on notebook globals: BaseStrategy, TradingSimulation, STARTING_CASH
 
@@ -32,14 +28,14 @@ SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
 
 class EnhancedStrategy(BaseStrategy):
     """
-    Multi-Sleeve Trading Strategy with Minimalist Drawdown Defense.
-    GPU work is pushed into batched FinBERT inference while portfolio execution
-    stays sequential to preserve the original trading behavior.
+    Multi-Sleeve Trading Strategy — Universe-Filtered Sentiment Edition.
+    FinBERT inference is restricted to tickers that actually qualify for the
+    trading universe, cutting sentiment precomputation by ~70-80%.
     """
 
     def __init__(self, finbert_pipeline=None, rsi_threshold=40, vol_mult=2,
                  s1_atr_mult=2, s2_atr_mult=2, sleeve2_exit_weeks=5,
-                 max_transcript_chars=10000):
+                 max_transcript_chars=2000):
         super().__init__(finbert_pipeline)
         self.rsi_threshold = rsi_threshold
         self.vol_mult = vol_mult
@@ -55,14 +51,13 @@ class EnhancedStrategy(BaseStrategy):
         self.precomputed_universes = {}
 
         # Sleeve tracking
-        self.sleeve1_positions = {}  # {ticker: {'entry_date': str, 'peak_price': float}}
-        self.sleeve2_positions = {}  # {ticker: {'entry_date': str, 'weeks_held': int, 'peak_price': float}}
+        self.sleeve1_positions = {}
+        self.sleeve2_positions = {}
         self.sentiment_cache = {}
 
         # Bulk sentiment preprocessing state
         self.sentiment_batch_size = 64
         self.sentiment_super_batch_size = 4096
-        self.preprocessing_workers = 3
         self.sentiment_chunk_workers = 4
         self.precomputed_llm_results = {}
         self.weekly_schedule = []
@@ -147,11 +142,6 @@ class EnhancedStrategy(BaseStrategy):
         return pd.date_range(start=min_date, end=max_date, freq='W-FRI').strftime('%Y-%m-%d').tolist()
 
     def _build_weekly_analytics_lookup(self, analytics_df, weekly_schedule):
-        """
-        Compress daily analytics down to the simulator's weekly schedule.
-        The simulation still executes sequentially, but it no longer walks
-        daily analytics rows to find the latest value for each week.
-        """
         print("Aligning analytics to weekly schedule...")
         if analytics_df.empty or not weekly_schedule:
             return {}
@@ -183,10 +173,6 @@ class EnhancedStrategy(BaseStrategy):
         return build_analytics_lookup_vectorised(weekly_df)
 
     def _build_weekly_market_views(self, analytics_lookup):
-        """
-        Transform weekly analytics into week-indexed views to avoid repeated
-        nested lookups during the backtest.
-        """
         weekly_records = defaultdict(list)
         weekly_prices = defaultdict(dict)
 
@@ -236,12 +222,8 @@ class EnhancedStrategy(BaseStrategy):
         portfolio['cash'] -= actual_cost
         portfolio['positions'][ticker] = {'shares': shares, 'buy_price': price}
         portfolio['trades'].append({
-            'date': date,
-            'ticker': ticker,
-            'action': 'BUY',
-            'shares': shares,
-            'price': price,
-            'value': actual_cost
+            'date': date, 'ticker': ticker, 'action': 'BUY',
+            'shares': shares, 'price': price, 'value': actual_cost
         })
         return shares
 
@@ -255,12 +237,8 @@ class EnhancedStrategy(BaseStrategy):
         del portfolio['positions'][ticker]
         portfolio['cash'] += proceeds
         portfolio['trades'].append({
-            'date': date,
-            'ticker': ticker,
-            'action': 'SELL',
-            'shares': shares,
-            'price': price,
-            'value': proceeds
+            'date': date, 'ticker': ticker, 'action': 'SELL',
+            'shares': shares, 'price': price, 'value': proceeds
         })
         return shares
 
@@ -283,17 +261,8 @@ class EnhancedStrategy(BaseStrategy):
         }
 
     def _run_fast_backtest(self, weekly_records, weekly_prices, weekly_earnings, verbose=False):
-        """
-        Faster replacement for TradingSimulation.run().
-        It preserves the sequential weekly decision process, but removes the
-        repeated per-ticker analytics scans and price-history fallbacks.
-        """
         print("Running fast backtest loop...")
-        portfolio = {
-            'cash': STARTING_CASH,
-            'positions': {},
-            'trades': []
-        }
+        portfolio = {'cash': STARTING_CASH, 'positions': {}, 'trades': []}
         portfolio_history = []
 
         for i, week_date in enumerate(self.weekly_schedule):
@@ -373,7 +342,6 @@ class EnhancedStrategy(BaseStrategy):
         if month_key in self.precomputed_universes:
             self.universe = self.precomputed_universes[month_key]
             self.universe_last_updated_month = month_key
-            print(f"  Universe updated ({month_key}): {len(self.universe)} stocks selected.")
             return
 
         if self.universe_analytics_df is None:
@@ -385,7 +353,6 @@ class EnhancedStrategy(BaseStrategy):
 
         self.universe = self._select_universe(analytics_slice)
         self.universe_last_updated_month = month_key
-        print(f"  Universe updated ({month_key}): {len(self.universe)} stocks selected.")
 
     # =====================================================================
     # LLM / FINBERT ANALYSIS
@@ -395,10 +362,8 @@ class EnhancedStrategy(BaseStrategy):
         transcript = str(transcript).strip()
         if not transcript:
             return ""
-
         if len(transcript) <= self.max_transcript_chars:
             return transcript
-
         head_chars = self.max_transcript_chars // 2
         tail_chars = self.max_transcript_chars - head_chars
         return transcript[:head_chars] + "\n" + transcript[-tail_chars:]
@@ -406,7 +371,6 @@ class EnhancedStrategy(BaseStrategy):
     def _chunk_transcript(self, transcript):
         if transcript is None:
             return []
-
         transcript = self._trim_transcript(transcript)
         if not transcript:
             return []
@@ -440,7 +404,6 @@ class EnhancedStrategy(BaseStrategy):
         total = pos + neg + neu
         if total == 0:
             return None
-
         net_sentiment = (pos - neg) / total
         dominant = 'positive' if pos >= neg and pos >= neu else (
             'negative' if neg >= pos and neg >= neu else 'neutral'
@@ -493,6 +456,8 @@ class EnhancedStrategy(BaseStrategy):
         earnings_df = self.earnings[['ticker', 'date', 'transcript']].copy()
         if allowed_tickers:
             earnings_df = earnings_df[earnings_df['ticker'].isin(allowed_tickers)]
+            print(f"  Filtering to {len(allowed_tickers)} universe tickers "
+                  f"({len(earnings_df):,} transcripts)")
         if earnings_df.empty:
             print("  No eligible earnings transcripts for precomputation")
             return
@@ -505,32 +470,25 @@ class EnhancedStrategy(BaseStrategy):
 
         if self.sentiment_chunk_workers > 1 and len(rows) > 1:
             with ThreadPoolExecutor(max_workers=self.sentiment_chunk_workers) as executor:
-                payloads = executor.map(self._prepare_transcript_payload, rows)
-                for payload in payloads:
-                    if payload is None:
-                        continue
-                    cache_key, valid_chunks = payload
-                    if cache_key in seen_cache_keys:
-                        continue
-                    seen_cache_keys.add(cache_key)
-                    chunk_texts.extend(valid_chunks)
-                    chunk_owners.extend([cache_key] * len(valid_chunks))
+                payloads = list(executor.map(self._prepare_transcript_payload, rows))
         else:
-            for row in rows:
-                payload = self._prepare_transcript_payload(row)
-                if payload is None:
-                    continue
-                cache_key, valid_chunks = payload
-                if cache_key in seen_cache_keys:
-                    continue
-                seen_cache_keys.add(cache_key)
-                chunk_texts.extend(valid_chunks)
-                chunk_owners.extend([cache_key] * len(valid_chunks))
+            payloads = [self._prepare_transcript_payload(row) for row in rows]
+
+        for payload in payloads:
+            if payload is None:
+                continue
+            cache_key, valid_chunks = payload
+            if cache_key in seen_cache_keys:
+                continue
+            seen_cache_keys.add(cache_key)
+            chunk_texts.extend(valid_chunks)
+            chunk_owners.extend([cache_key] * len(valid_chunks))
 
         if not chunk_texts:
-            print("  No valid transcript chunks found for precomputation")
+            print("  No valid transcript chunks found")
             return
 
+        print(f"  Running FinBERT on {len(chunk_texts):,} chunks...")
         sentiment_counts = defaultdict(lambda: [0, 0, 0])
         for start in range(0, len(chunk_texts), self.sentiment_super_batch_size):
             batch_chunks = chunk_texts[start:start + self.sentiment_super_batch_size]
@@ -583,7 +541,6 @@ class EnhancedStrategy(BaseStrategy):
                 valid_chunks = self._chunk_transcript(transcript)
                 if not valid_chunks:
                     return None
-
                 pos, neg, neu = self._infer_sentiment_counts(valid_chunks)
                 base_result = self._build_sentiment_payload(pos, neg, neu)
                 if base_result is None:
@@ -626,7 +583,6 @@ class EnhancedStrategy(BaseStrategy):
         if ticker in self.sleeve1_positions:
             pos_info = self.sleeve1_positions[ticker]
             pos_info['peak_price'] = max(pos_info['peak_price'], price)
-
             if price <= pos_info['peak_price'] - (self.s1_atr_mult * atr_14) or date > pos_info['entry_date']:
                 del self.sleeve1_positions[ticker]
                 return 'SELL'
@@ -635,7 +591,6 @@ class EnhancedStrategy(BaseStrategy):
             pos_info = self.sleeve2_positions[ticker]
             pos_info['weeks_held'] += 1
             pos_info['peak_price'] = max(pos_info['peak_price'], price)
-
             if price <= pos_info['peak_price'] - (self.s2_atr_mult * atr_14) or pos_info['weeks_held'] >= self.sleeve2_exit_weeks:
                 del self.sleeve2_positions[ticker]
                 return 'SELL'
@@ -702,27 +657,33 @@ class EnhancedStrategy(BaseStrategy):
         self.weekly_schedule = self._build_weekly_schedule(self.prices)
 
         print("Running evaluation...")
-        # CPU-heavy tasks run in parallel threads; GPU inference stays on main thread
-        # to avoid CUDA batching issues when called from a worker thread
+
+        # Step 1: CPU preprocessing in parallel
         with ThreadPoolExecutor(max_workers=2) as executor:
             analytics_future = executor.submit(self.calculate_analytics, self.prices)
             earnings_future = executor.submit(self._build_weekly_earnings_lookup)
             analytics = analytics_future.result()
             weekly_earnings = earnings_future.result()
 
-        self._precompute_llm_analysis()
-
+        # Step 2: Universe + analytics lookup in parallel (both need analytics)
         with ThreadPoolExecutor(max_workers=2) as executor:
             universe_future = executor.submit(self._precompute_monthly_universes, self.weekly_schedule)
             analytics_lookup_future = executor.submit(
-                self._build_weekly_analytics_lookup,
-                analytics,
-                self.weekly_schedule
+                self._build_weekly_analytics_lookup, analytics, self.weekly_schedule
             )
-
             universe_future.result()
             analytics_lookup = analytics_lookup_future.result()
 
-        weekly_records, weekly_prices = self._build_weekly_market_views(analytics_lookup)
+        # Step 3: Collect all tickers that ever qualify for the universe
+        universe_tickers = set()
+        for tickers in self.precomputed_universes.values():
+            universe_tickers.update(tickers)
+        print(f"  Universe covers {len(universe_tickers)} unique tickers across all months "
+              f"(out of {self.prices['ticker'].nunique()} total)")
 
+        # Step 4: FinBERT only on universe tickers — stays on main thread for CUDA
+        self._precompute_llm_analysis(allowed_tickers=universe_tickers)
+
+        # Step 5: Build week-indexed views and run backtest
+        weekly_records, weekly_prices = self._build_weekly_market_views(analytics_lookup)
         return self._run_fast_backtest(weekly_records, weekly_prices, weekly_earnings, verbose)
