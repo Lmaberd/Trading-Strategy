@@ -36,30 +36,7 @@ import numpy as np
 import pandas as pd
 
 
-def build_analytics_lookup_vectorised(analytics_df):
-    """
-    Build O(1) lookup dict from analytics DataFrame.
-    GPU-OPTIMISED: Uses vectorised groupby instead of iterrows().
-    iterrows() on ~1.3M rows is extremely slow; this is 50-100x faster.
-    """
-    print("Building analytics lookup (vectorised)...")
-    lookup = {}
 
-    # Sort once globally — groupby preserves order within groups
-    sorted_df = analytics_df.sort_values(['ticker', 'date'])
-
-    for ticker, group in sorted_df.groupby('ticker', sort=False):
-        dates = group['date'].tolist()
-        records = group.to_dict('records')
-        lookup[ticker] = list(zip(dates, records))
-
-    print(f"  Lookup built for {len(lookup)} tickers")
-    return lookup
-
-def get_quarter_key(date_str):
-    """Convert a date string to a quarter key like '2015-Q3'."""
-    dt = pd.to_datetime(date_str)
-    return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"
 
 
 SENTENCE_SPLIT_RE = re.compile(r'(?<=[.!?])\s+')
@@ -165,6 +142,23 @@ class EnhancedStrategy(BaseStrategy):
         print(f"  Analytics computed: {len(result_df):,} rows for {result_df['ticker'].nunique()} tickers")
         return result_df
 
+    @staticmethod
+    def _get_quarter_key(date_str):
+        dt = pd.to_datetime(date_str)
+        return f"{dt.year}-Q{(dt.month - 1) // 3 + 1}"
+
+    @staticmethod
+    def _build_analytics_lookup_vectorised(analytics_df):
+        print("Building analytics lookup (vectorised)...")
+        lookup = {}
+        sorted_df = analytics_df.sort_values(['ticker', 'date'])
+        for ticker, group in sorted_df.groupby('ticker', sort=False):
+            dates = group['date'].tolist()
+            records = group.to_dict('records')
+            lookup[ticker] = list(zip(dates, records))
+        print(f"  Lookup built for {len(lookup)} tickers")
+        return lookup
+
     def _build_weekly_schedule(self, prices_df):
         min_date = pd.to_datetime(prices_df['date']).min()
         max_date = pd.to_datetime(prices_df['date']).max()
@@ -205,7 +199,7 @@ class EnhancedStrategy(BaseStrategy):
 
         weekly_df['date'] = weekly_df['date'].dt.strftime('%Y-%m-%d')
         print(f"  Weekly analytics aligned: {len(weekly_df):,} rows")
-        return build_analytics_lookup_vectorised(weekly_df)
+        return self._build_analytics_lookup_vectorised(weekly_df)
 
     def _build_weekly_market_views(self, analytics_lookup):
         weekly_records = defaultdict(list)
@@ -637,7 +631,7 @@ class EnhancedStrategy(BaseStrategy):
                     return None
                 self.precomputed_llm_results[cache_key] = base_result
 
-            quarter_key = get_quarter_key(date)
+            quarter_key = self._get_quarter_key(date)
             net_sentiment = base_result['net_sentiment']
             self.sentiment_cache[(ticker, quarter_key)] = net_sentiment
 
