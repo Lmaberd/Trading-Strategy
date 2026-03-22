@@ -1,6 +1,6 @@
 """
-EnhancedStrategy V11.3: Standalone (copy-paste ready for notebook)
-===================================================================
+EnhancedStrategy V13: Fully Parkinson Volatility
+================================================
 Fixes applied on top of V10:
 
   1. return_all_scores=True bug (sleeve 2 was completely broken)
@@ -18,7 +18,7 @@ Fixes applied on top of V10:
 
   3. Monthly universe: per-ticker precomputation (eliminates 216× groupby)
      - Old: 216 × groupby('ticker').last() on slices up to 1.3M rows.
-     - New: precompute per-ticker sorted {dates, vol60, amihud60} arrays once,
+     - New: precompute per-ticker sorted {dates, park60, amihud60} arrays once,
        then do one np.searchsorted per ticker per month (216 × 340 = 73k lookups).
 
   4. Analytics alignment: pd.merge_asof replaces Python for-loop over 340 tickers
@@ -43,7 +43,7 @@ class EnhancedStrategy(BaseStrategy):
 
     def __init__(self, finbert_pipeline=None, rsi_threshold=40, vol_mult=2,
                  s1_atr_mult=2, s2_atr_mult=2, sleeve2_exit_weeks=5,
-                 max_transcript_chars=2000):
+                 max_transcript_chars=4000, park_veto_mult=1.75):
         super().__init__(finbert_pipeline)
         self.rsi_threshold = rsi_threshold
         self.vol_mult = vol_mult
@@ -51,6 +51,7 @@ class EnhancedStrategy(BaseStrategy):
         self.s2_atr_mult = s2_atr_mult
         self.sleeve2_exit_weeks = sleeve2_exit_weeks
         self.max_transcript_chars = max_transcript_chars
+        self.park_veto_mult = park_veto_mult
 
         self.universe = set()
         self.universe_last_updated_month = None
@@ -90,18 +91,12 @@ class EnhancedStrategy(BaseStrategy):
 
         ticker_index = df['ticker']
         grouped = df.groupby('ticker', sort=False)
-        annualisation = np.sqrt(252.0)
-
         daily_return = grouped['close'].pct_change()
         close_rolling = df['close'].groupby(ticker_index, sort=False)
         volume_rolling = df['volume'].groupby(ticker_index, sort=False)
 
         df['daily_return'] = daily_return
         df['ma_200'] = close_rolling.rolling(200, min_periods=50).mean().reset_index(level=0, drop=True)
-
-        daily_return_rolling = daily_return.groupby(ticker_index, sort=False)
-        df['vol_60'] = daily_return_rolling.rolling(60, min_periods=30).std().mul(annualisation).reset_index(level=0, drop=True)
-        df['vol_10'] = daily_return_rolling.rolling(10, min_periods=5).std().mul(annualisation).reset_index(level=0, drop=True)
 
         dollar_volume = df['close'] * df['volume']
         amihud_daily = daily_return.abs().div(dollar_volume.replace(0, np.nan))
@@ -114,8 +109,21 @@ class EnhancedStrategy(BaseStrategy):
                 (df['high'] - prev_close).abs(),
                 (df['low'] - prev_close).abs(),
             ], axis=1).max(axis=1)
+
+            safe_high = df['high'].replace(0, np.nan)
+            safe_low = df['low'].replace(0, np.nan)
+            log_hl = np.log(safe_high.div(safe_low))
+            park_daily_var = log_hl.pow(2).div(4.0 * np.log(2.0))
+            park_daily_var = park_daily_var.replace([np.inf, -np.inf], np.nan)
+            park_var_10 = park_daily_var.groupby(ticker_index, sort=False).rolling(10, min_periods=5).mean().reset_index(level=0, drop=True)
+            park_var_60 = park_daily_var.groupby(ticker_index, sort=False).rolling(60, min_periods=30).mean().reset_index(level=0, drop=True)
+            df['park_vol_10'] = np.sqrt(252.0 * park_var_10)
+            df['park_vol_60'] = np.sqrt(252.0 * park_var_60)
         else:
             true_range = (df['close'] - prev_close).abs()
+            daily_return_rolling = daily_return.groupby(ticker_index, sort=False)
+            df['park_vol_10'] = daily_return_rolling.rolling(10, min_periods=5).std().mul(np.sqrt(252.0)).reset_index(level=0, drop=True)
+            df['park_vol_60'] = daily_return_rolling.rolling(60, min_periods=30).std().mul(np.sqrt(252.0)).reset_index(level=0, drop=True)
         df['atr_14'] = true_range.groupby(ticker_index, sort=False).rolling(14, min_periods=1).mean().reset_index(level=0, drop=True)
 
         delta = grouped['close'].diff()
@@ -130,7 +138,7 @@ class EnhancedStrategy(BaseStrategy):
 
         result_df = df[[
             'ticker', 'date', 'open', 'close', 'volume', 'daily_return',
-            'vol_60', 'vol_10', 'amihud_60', 'rsi_14', 'volume_ma_20',
+            'park_vol_10', 'park_vol_60', 'amihud_60', 'rsi_14', 'volume_ma_20',
             'ma_200', 'atr_14'
         ]].copy()
         result_df['date'] = result_df['date'].dt.strftime('%Y-%m-%d')
@@ -329,10 +337,10 @@ class EnhancedStrategy(BaseStrategy):
     def _select_universe(self, analytics_slice):
         """Used only by _update_universe fallback. Normal path uses _select_universe_from_latest."""
         latest = analytics_slice.groupby('ticker').last().reset_index()
-        scored = latest.dropna(subset=['vol_60', 'amihud_60']).copy()
+        scored = latest.dropna(subset=['park_vol_60', 'amihud_60']).copy()
         if scored.empty:
             return set()
-        scored['vol_rank'] = scored['vol_60'].rank(ascending=True, method='average')
+        scored['vol_rank'] = scored['park_vol_60'].rank(ascending=True, method='average')
         scored['amihud_rank'] = scored['amihud_60'].rank(ascending=False, method='average')
         scored['composite_score'] = scored['vol_rank'] + scored['amihud_rank']
         threshold = scored['composite_score'].quantile(0.75)
@@ -340,25 +348,25 @@ class EnhancedStrategy(BaseStrategy):
 
     def _select_universe_from_latest(self, latest_dict):
         """
-        Select universe from {ticker: (vol_60, amihud_60)} dict.
+        Select universe from {ticker: (park_vol_60, amihud_60)} dict.
         Avoids groupby — input is already the latest value per ticker.
         """
         if not latest_dict:
             return set()
 
         tickers = list(latest_dict.keys())
-        vol60s   = np.array([v[0] for v in latest_dict.values()], dtype=float)
+        park60s = np.array([v[0] for v in latest_dict.values()], dtype=float)
         amihud60s = np.array([v[1] for v in latest_dict.values()], dtype=float)
 
-        valid = ~(np.isnan(vol60s) | np.isnan(amihud60s))
+        valid = ~(np.isnan(park60s) | np.isnan(amihud60s))
         if not valid.any():
             return set()
 
         valid_tickers = [t for t, v in zip(tickers, valid) if v]
-        vol_valid    = vol60s[valid]
+        park_valid = park60s[valid]
         amihud_valid = amihud60s[valid]
 
-        vol_rank    = pd.Series(vol_valid).rank(ascending=True,  method='average').values
+        vol_rank    = pd.Series(park_valid).rank(ascending=True,  method='average').values
         amihud_rank = pd.Series(amihud_valid).rank(ascending=False, method='average').values
         composite   = vol_rank + amihud_rank
         threshold   = np.quantile(composite, 0.75)
@@ -375,13 +383,13 @@ class EnhancedStrategy(BaseStrategy):
         print("Precomputing monthly universe snapshots...")
 
         # One groupby to build per-ticker sorted lookup arrays
-        df = self.universe_analytics_df[['ticker', 'date', 'vol_60', 'amihud_60']]
+        df = self.universe_analytics_df[['ticker', 'date', 'park_vol_60', 'amihud_60']]
         ticker_data = {}
         for ticker, grp in df.groupby('ticker', sort=False):
             grp = grp.sort_values('date')
             ticker_data[ticker] = {
                 'dates':    grp['date'].values,
-                'vol60':    grp['vol_60'].values,
+                'park60':   grp['park_vol_60'].values,
                 'amihud60': grp['amihud_60'].values,
             }
 
@@ -396,7 +404,7 @@ class EnhancedStrategy(BaseStrategy):
             for ticker, td in ticker_data.items():
                 i = int(np.searchsorted(td['dates'], cutoff_date, side='right')) - 1
                 if i >= 0:
-                    latest[ticker] = (td['vol60'][i], td['amihud60'][i])
+                    latest[ticker] = (td['park60'][i], td['amihud60'][i])
 
             if latest:
                 self.precomputed_universes[month_key] = self._select_universe_from_latest(latest)
@@ -682,14 +690,14 @@ class EnhancedStrategy(BaseStrategy):
         if not in_univ or has_pos:
             return 'HOLD'
 
-        vol_10 = analytics.get('vol_10')
-        vol_60 = analytics.get('vol_60')
+        park_vol_10 = analytics.get('park_vol_10')
+        park_vol_60 = analytics.get('park_vol_60')
         ma_200 = analytics.get('ma_200')
 
         vol_veto = (
-            vol_10 is not None and vol_60 is not None
-            and not np.isnan(vol_10) and not np.isnan(vol_60)
-            and vol_10 > 1.75 * vol_60
+            park_vol_10 is not None and park_vol_60 is not None
+            and not np.isnan(park_vol_10) and not np.isnan(park_vol_60)
+            and park_vol_10 > self.park_veto_mult * park_vol_60
         )
         is_downtrend = ma_200 is not None and price < ma_200
 

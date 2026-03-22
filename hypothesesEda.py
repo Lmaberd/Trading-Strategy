@@ -652,6 +652,73 @@ def run_trend_filter_crash_experiment():
     plt.grid(True, alpha=0.3)
     plt.show()
 
+def run_parkinson_volatility_persistence_experiment():
+    print_section("Hypothesis 9: Parkinson Volatility vs Historical Volatility Persistence")
+    df = prices_dev.copy()
+
+    df = df.copy()
+    df.sort_values(by=["ticker", "date"], inplace=True)
+
+    df["prev_close"] = df.groupby("ticker")["close"].shift(1)
+    df["log_ret"] = np.log(df["close"] / df["prev_close"])
+
+    df["hist_vol"] = df.groupby("ticker")["log_ret"].transform(lambda series: series.rolling(window=20).std())
+
+    df["log_hl_sq"] = (np.log(df["high"] / df["low"])) ** 2
+    const_factor = 1.0 / (4.0 * np.log(2.0))
+    df["park_vol_sq"] = df.groupby("ticker")["log_hl_sq"].transform(lambda series: series.rolling(window=20).mean())
+    df["park_vol"] = np.sqrt(const_factor * df["park_vol_sq"])
+
+    df["future_vol"] = df.groupby("ticker")["hist_vol"].shift(-20)
+    valid_df = df.dropna(subset=["hist_vol", "park_vol", "future_vol"])
+
+    print(f"Data points available for correlation analysis: {len(valid_df)}")
+    if len(valid_df) == 0:
+        print("No valid data points found.")
+        return
+
+    corr_hv = valid_df["hist_vol"].corr(valid_df["future_vol"])
+    corr_pv = valid_df["park_vol"].corr(valid_df["future_vol"])
+
+    print("\n--- Correlation Results ---")
+    print(f"Historical Volatility vs Future Realized Volatility: {corr_hv:.4f}")
+    print(f"Parkinson Volatility vs Future Realized Volatility:  {corr_pv:.4f}")
+
+    print("\n--- Conclusion ---")
+    if corr_pv > corr_hv:
+        print("Parkinson Volatility has higher predictive persistence (higher correlation with future volatility).")
+    else:
+        print("Historical Volatility has higher predictive persistence (higher correlation with future volatility).")
+
+    plot_df = valid_df.sample(min(5000, len(valid_df)), random_state=42)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig.suptitle("Hypothesis 9: Parkinson vs Historical Volatility Persistence", fontsize=14, fontweight="bold")
+
+    axes[0].scatter(plot_df["hist_vol"], plot_df["future_vol"], alpha=0.2, s=10, color="#1f77b4")
+    axes[0].set_title(f"Historical Vol vs Future Vol\nCorr = {corr_hv:.4f}")
+    axes[0].set_xlabel("20-Day Historical Volatility")
+    axes[0].set_ylabel("Future Realized Volatility")
+    axes[0].grid(True, alpha=0.3)
+
+    axes[1].scatter(plot_df["park_vol"], plot_df["future_vol"], alpha=0.2, s=10, color="#d62728")
+    axes[1].set_title(f"Parkinson Vol vs Future Vol\nCorr = {corr_pv:.4f}")
+    axes[1].set_xlabel("20-Day Parkinson Volatility")
+    axes[1].set_ylabel("Future Realized Volatility")
+    axes[1].grid(True, alpha=0.3)
+
+    labels = ["Historical Vol", "Parkinson Vol"]
+    correlations = [corr_hv, corr_pv]
+    colors = ["#1f77b4", "#d62728"]
+    axes[2].bar(labels, correlations, color=colors, edgecolor="black", alpha=0.85)
+    axes[2].set_title("Correlation With Future Realized Volatility")
+    axes[2].set_ylabel("Correlation")
+    axes[2].grid(axis="y", alpha=0.3)
+    for idx, value in enumerate(correlations):
+        axes[2].text(idx, value + 0.005, f"{value:.4f}", ha="center", fontweight="bold")
+
+    plt.tight_layout()
+    plt.show()
+
 
 def run_amihud_vol_window_search_experiment():
     """
@@ -830,7 +897,7 @@ def run_amihud_vol_window_search_experiment():
     plt.tight_layout()
     plt.show()
 
-
+def main():
     required_datasets = ("prices_dev", "prices_val", "earnings_dev", "earnings_val")
     missing = [name for name in required_datasets if name not in globals()]
     if missing:
@@ -848,7 +915,8 @@ def run_amihud_vol_window_search_experiment():
         run_sentiment_acceleration_experiment,
         run_volatility_acceleration_experiment,
         run_trend_filter_crash_experiment,
-        run_amihud_vol_window_search_experiment,  # H8: Lookback window grid search
+        run_amihud_vol_window_search_experiment,
+        run_parkinson_volatility_persistence_experiment,
     ]
 
     for experiment in experiments:
