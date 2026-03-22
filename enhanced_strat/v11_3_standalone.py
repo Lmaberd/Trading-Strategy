@@ -1,6 +1,6 @@
 """
-EnhancedStrategy V11: Optimised Inference
-==========================================
+EnhancedStrategy V11.3: Standalone (copy-paste ready for notebook)
+===================================================================
 Fixes applied on top of V10:
 
   1. return_all_scores=True bug (sleeve 2 was completely broken)
@@ -24,8 +24,9 @@ Fixes applied on top of V10:
   4. Analytics alignment: pd.merge_asof replaces Python for-loop over 340 tickers
      - Old: Python loop → groupby → searchsorted → iloc → concat (340 iterations).
      - New: cross-join weeks × tickers (93k rows), single vectorised merge_asof call.
+
+Notebook globals required: BaseStrategy, STARTING_CASH
 """
-# Depends on notebook globals: BaseStrategy, TradingSimulation, STARTING_CASH
 
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -33,8 +34,7 @@ from collections import defaultdict
 
 import numpy as np
 import pandas as pd
-# from enhanced_helpers.lookups import build_analytics_lookup_vectorised
-# from enhanced_helpers.sentiment import get_quarter_key
+
 
 def build_analytics_lookup_vectorised(analytics_df):
     """
