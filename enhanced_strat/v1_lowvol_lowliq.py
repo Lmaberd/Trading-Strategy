@@ -1,10 +1,10 @@
 """
-EnhancedStrategy V1: Low Volatility, High Liquidity Universe
+EnhancedStrategy V1: Low Volatility, Low Liquidity Universe
 ============================================================
 Based on V14 (Optimised Parkinson Volatility).
-Universe selection changed to target the LEAST volatile and MOST liquid stocks.
-Both park_vol_60 and amihud_60 are ranked ascending so that low values
-(= low volatility, high liquidity) receive low ranks. The bottom 25th
+Universe selection changed to target the LEAST volatile and LEAST liquid stocks.
+park_vol_60 is ranked ascending (low vol = low rank) and amihud_60 is ranked
+descending (high Amihud = low liquidity = low rank). The bottom 25th
 percentile of the composite score is then selected.
 
 Optimisations applied on top of V13:
@@ -385,7 +385,7 @@ class EnhancedStrategy(BaseStrategy):
         if scored.empty:
             return set()
         scored['vol_rank'] = scored['park_vol_60'].rank(ascending=True, method='average')
-        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=True, method='average')
+        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=False, method='average')
         scored['composite_score'] = scored['vol_rank'] + scored['amihud_rank']
         threshold = scored['composite_score'].quantile(0.25)
         return set(scored[scored['composite_score'] <= threshold]['ticker'].tolist())
@@ -411,7 +411,7 @@ class EnhancedStrategy(BaseStrategy):
         amihud_valid = amihud60s[valid]
 
         vol_rank    = pd.Series(park_valid).rank(ascending=True,  method='average').values
-        amihud_rank = pd.Series(amihud_valid).rank(ascending=True,  method='average').values
+        amihud_rank = pd.Series(amihud_valid).rank(ascending=False, method='average').values
         composite   = vol_rank + amihud_rank
         threshold   = np.quantile(composite, 0.25)
 
