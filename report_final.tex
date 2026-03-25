@@ -1,0 +1,333 @@
+\documentclass[11pt,twoside,a4paper]{article}
+
+\usepackage[a4paper,margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\newcommand{\reporttitle}{Algorithmic Trading Strategy Development and Optimisation}
+\newcommand{\gid}{X}
+\newcommand{\reportauthorOne}{Student 1}
+\newcommand{\cidOne}{your id number}
+\newcommand{\reportauthorTwo}{Student 2}
+\newcommand{\cidTwo}{your id number}
+\newcommand{\reportauthorThree}{Student 3}
+\newcommand{\cidThree}{your id number}
+\newcommand{\reportauthorFour}{Student 4}
+\newcommand{\cidFour}{your id number}
+\newcommand{\reportauthorFive}{Student 5}
+\newcommand{\cidFive}{your id number}
+\newcommand{\reportauthorSix}{Student 6}
+\newcommand{\cidSix}{your id number}
+\newcommand{\reporttype}{Group Project Assignment 2}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.6em}
+\setlist[itemize]{leftmargin=1.5em}
+\onehalfspacing
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    {\Large \reporttype \par}
+    \vspace{1.5cm}
+    {\huge \bfseries \reporttitle \par}
+    \vspace{1cm}
+    {\Large Literature Review and Development Report\par}
+    \vspace{1.5cm}
+    {\large Group ID: \gid \par}
+    \vfill
+    \begin{tabular}{ll}
+        \reportauthorOne & \cidOne \\
+        \reportauthorTwo & \cidTwo \\
+        \reportauthorThree & \cidThree \\
+        \reportauthorFour & \cidFour \\
+        \reportauthorFive & \cidFive \\
+        \reportauthorSix & \cidSix \\
+    \end{tabular}
+    \vfill
+    {\large \today\par}
+\end{titlepage}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+This report documents the iterative development of an algorithmic trading strategy for S\&P 500 equities using two primary data sources: daily market data and quarterly earnings call transcripts. The development arc focuses on four structured strategy variants (V1 to V4), each designed as a direct response to evidence from exploratory analysis and each evaluated under the same weekly rebalancing framework.
+
+The project is motivated by two complementary strands of modern quantitative finance. First, market microstructure and technical trading research suggest that liquidity, volatility, and price/volume dynamics shape where exploitable opportunities are most likely to emerge. Second, financial natural language processing offers a way to convert unstructured corporate disclosures into systematic trading signals, especially when changes in managerial tone or outlook are persistent across reporting periods. The project therefore sits at the intersection of market data engineering, factor-style universe construction, and domain-specific sentiment analysis.
+
+The project objectives were threefold. The first objective was to build a high-quality strategy that balances absolute return and risk-adjusted efficiency. The second objective was to do so under a disciplined experimental protocol, using a development split from 2000 to 2017 and a validation split from 2018 to 2024, so that design decisions were not made on the final out-of-sample period. The third objective was to quantify the marginal contribution of each component, especially how much value came from universe design versus sentiment modelling.
+
+In literature-review terms, the final project can be read as an applied comparison of competing hypotheses. One hypothesis is that low-volatility, highly liquid stocks are the most reliable trading universe. A second is that the opposite tail, consisting of more volatile and illiquid names, contains stronger but noisier opportunities. A third is that combining both tails may outperform either alone. A fourth is that language-model sentiment may improve entry quality, but only if the additional signal exceeds the operational and modelling complexity it introduces.
+
+\section{Enhanced Exploratory Data Analysis (EDA)}
+The supplied project materials describe a dataset with broad historical and cross-sectional coverage. The development split contains 1,332,576 price records, while the validation split contains 598,740 price records, both drawn from 340 S\&P 500 tickers. This scale is large enough to support long rolling indicators such as 60-day liquidity and volatility measures, 200-day trend filters, and repeated monthly universe reconstruction. It also creates non-trivial engineering demands, because even conceptually simple per-ticker operations become expensive when repeated over many dates and securities.
+
+The exploratory findings that shaped the strategy are more structural than purely descriptive. The most important observation is that the composite distribution formed by Parkinson volatility and Amihud illiquidity is informative at the tails. In the development split, a bottom-quartile universe covered 223 unique tickers, a top-quartile universe covered 260 unique tickers, and the combined dual-tail universe covered 332 unique tickers. This suggests that the center of the cross-section was comparatively unremarkable for the chosen signal family, whereas the extremes offered more differentiated trading conditions.
+
+The earnings transcript corpus was also substantial. Depending on the active universe, the development split required sentiment processing over 5,667 to 9,464 transcripts, corresponding to 68,912 to 114,914 text chunks. On the validation split, the comparable ranges were 5,138 to 8,371 transcripts and 63,041 to 102,849 chunks. These counts show that transcript analysis was not a cosmetic add-on; it was a computationally meaningful subsystem that needed to justify itself through better trading outcomes.
+
+Several project-level implications follow from this exploratory phase.
+\begin{itemize}
+    \item The trading universe should not be treated as fixed. A monthly cross-sectional filter is justified because the most attractive names depend on recent liquidity and volatility conditions.
+    \item The center of the composite score distribution appears to carry lower signal-to-noise than either tail. This became the main rationale for the dual-tail design used in later versions.
+    \item Transcript coverage is rich enough to support a sentiment sleeve, but the volume of text implies that NLP must be batched and engineered carefully if it is to remain practical.
+\end{itemize}
+
+Table~\ref{tab:eda-summary} summarises the main empirical context extracted from the project documentation.
+
+\begin{table}[h]
+\centering
+\caption{Dataset and universe coverage summary}
+\label{tab:eda-summary}
+\begin{tabularx}{\textwidth}{@{}lXr@{}}
+\toprule
+Category & Observation & Value \\
+\midrule
+Price data (development) & Daily OHLCV records across S\&P 500 tickers & 1,332,576 \\
+Price data (validation) & Daily OHLCV records across S\&P 500 tickers & 598,740 \\
+Total ticker coverage & Distinct equities considered across both splits & 340 \\
+V1 development universe & Bottom quartile of composite score & 223 tickers \\
+V2 development universe & Top quartile of composite score & 260 tickers \\
+V3 development universe & Bottom and top quartiles combined & 332 tickers \\
+V4 development universe & Dual-tail technical-only variant & 331 tickers \\
+Largest transcript workload & V3 development sentiment preprocessing & 114,914 chunks \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\section{Data Cleaning and Preparation}
+Data cleaning in this project served two purposes: preserving chronological integrity and ensuring that the feature engineering pipeline produced stable indicator values. The code and documentation indicate the following preparation steps.
+
+\begin{itemize}
+    \item Duplicate records were removed from both price data and earnings data before any analytics were computed.
+    \item Date fields were converted to a proper datetime format and all records were sorted by ticker and time, ensuring that rolling indicators and prior-quarter comparisons were computed in the correct order.
+    \item Earnings transcripts shorter than 100 characters were excluded from sentiment analysis. This choice reduced noise from stub records or incomplete documents that would not support reliable chunk-level inference.
+    \item Rolling indicators such as RSI-14, ATR-14, 20-day volume averages, 60-day Amihud illiquidity, and 10/60-day Parkinson volatility naturally introduce initial missing values. Rather than imputing these values, the implementation waited until sufficient history was available.
+    \item Universe construction dropped securities with missing long-horizon volatility or illiquidity measures for the current snapshot, which prevented unstable rankings from entering the portfolio merely because of insufficient lookback history.
+    \item Daily analytics were aligned to a weekly trading schedule using an as-of join. This preserved the most recent available information at each Friday decision point without leaking future data.
+\end{itemize}
+
+From a methodological perspective, these choices are appropriate for a historical trading study. They prioritise temporal realism over maximum sample count. In particular, refusing to backfill long-window statistics is important because fabricated early values would distort the monthly cross-sectional ranking that determines eligibility for trading.
+
+The main data limitation concerns reporting completeness rather than raw cleanliness. The provided markdown material reports development and validation outcomes, but it does not provide a separate test split or the full set of validation metrics requested in the original template. Where the source material is silent, this report avoids inventing values and instead notes the missing evidence explicitly.
+
+\section{Computational Efficiency and Performance Optimization}
+The strategy work in \verb|trading_assignment2.ipynb| was constrained as much by compute as by modelling. On the development split alone, the pipeline processes 1,332,576 price rows, 340 tickers, weekly decision schedules over 214 months, and up to 114,914 FinBERT text chunks. Because of this scale, the notebook's V14/V14.2/V16 implementations treated optimisation as a first-class design layer rather than post-hoc tuning.
+
+\subsection*{Scalability Challenges Identified in the Notebook}
+The notebook documents four concrete bottlenecks that repeatedly slowed experimentation before optimisation:
+\begin{itemize}
+    \item \textbf{Universe update bottleneck:} monthly universe reconstruction originally used repeated \verb|groupby('ticker').last()| over expanding historical slices, creating repeated full scans over million-row dataframes.
+    \item \textbf{Weekly alignment bottleneck:} mapping daily analytics to each Friday decision date used per-ticker loops with \verb|groupby|, \verb|searchsorted|, \verb|iloc|, and concatenation, which introduced heavy Python overhead at 340-ticker scale.
+    \item \textbf{Sentiment bottleneck:} transcript inference involved tens of thousands of chunks per split; sequential or poorly batched inference made this the dominant runtime block.
+    \item \textbf{Correctness-performance coupling:} the notebook explicitly reports that \verb|return_all_scores=True| output was mis-parsed in early code, making Sleeve 2 effectively dead. This was both a correctness issue and a wasted-compute issue.
+\end{itemize}
+
+\subsection*{Optimization Architecture Implemented}
+Based on the optimisation headers and code paths in \verb|trading_assignment2.ipynb| (V14.2, V14, V16), the final architecture used the following stack:
+\begin{itemize}
+    \item \textbf{Vectorised analytics kernel:} rolling indicators (Parkinson, Amihud, RSI, ATR, volume MA, MA-200) were computed with grouped vectorised operations over the full panel instead of per-ticker Python loops.
+    \item \textbf{Single-pass weekly alignment:} the pipeline built a cross join of all weeks and tickers, then used one \verb|pd.merge_asof| call to align latest available analytics for each \((\text{ticker}, \text{week})\) pair.
+    \item \textbf{Monthly universe precomputation:} universe membership was precomputed once per month from weekly snapshots; notebook notes describe replacing repeated large \verb|groupby| calls with indexed lookups and \verb|np.searchsorted| style access (216 months \(\times\) 340 tickers \(\approx\) 73k lookups).
+    \item \textbf{FinBERT output fix and richer aggregation:} an \verb|_extract_scores()| path was introduced to support both list and dict output formats from HuggingFace pipelines when \verb|return_all_scores=True| is enabled, and chunk-level class probabilities were summed directly instead of winner-count voting.
+    \item \textbf{Batched NLP with mixed precision:} transcript chunks were processed in large batches (batch size 128 in the optimized versions), with FP16 conversion on CUDA to improve throughput (notebook annotation: \(\sim2\times\)).
+    \item \textbf{Parallel preprocessing orchestration:} analytics generation and weekly earnings lookup were launched concurrently via \verb|ThreadPoolExecutor| before backtest execution.
+    \item \textbf{Universe-gated NLP:} transcript processing was filtered to tickers that ever qualified for the selected universe, reducing unnecessary inference.
+    \item \textbf{Architectural simplification in V4:} the technical-only V4 variant removed all FinBERT preprocessing and sentiment-state management while retaining dual-tail universe logic.
+\end{itemize}
+
+\subsection*{Measured Operational Impact}
+Although the notebook does not provide an explicit wall-clock benchmark table, it reports enough run-time diagnostics to quantify the scale handled by the optimised path (Table~\ref{tab:efficiency}).
+
+\begin{table}[h]
+\centering
+\caption{Notebook-grounded optimisation evidence from \texttt{trading\_assignment2.ipynb}}
+\label{tab:efficiency}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{2.5cm}X>{\raggedright\arraybackslash}p{4.9cm}@{}}
+\toprule
+Layer & Optimised implementation & Evidence reported in notebook outputs/notes \\
+\midrule
+Feature engineering & Vectorised grouped rolling computations across full panel & ``Analytics computed'' once over 1,332,576 dev rows (340 tickers) and 598,740 val rows \\
+Weekly alignment & Cross-join weeks \(\times\) tickers + single \verb|merge_asof| & Notebook optimisation notes state replacement of 340-loop alignment with \(\sim\)93k-row vectorised join frame \\
+Universe updates & Monthly precompute with indexed lookup / \verb|searchsorted| style retrieval & Notes state elimination of repeated 216 large \verb|groupby| calls in favour of \(\sim\)73k indexed lookups \\
+FinBERT correctness & \verb|return_all_scores| parsing fix + probability aggregation & Notes state old logic forced neutral outputs, blocking sentiment acceleration in Sleeve 2 \\
+FinBERT throughput & Batch inference + FP16 on CUDA & Batch size 128; notes indicate approximately 2x throughput on GPU; workloads up to 114,914 chunks (dev V3) \\
+End-to-end simplification & Remove NLP in V4 and keep technical dual-tail flow & V4 no longer requires earnings dataframe for evaluation and avoids transcript preprocessing \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The key methodological point is that optimisation changed what research was feasible. Faster alignment, universe precomputation, and batched inference enabled repeated ablation runs across V1--V4, while the V4 simplification demonstrated that strong risk-adjusted results can be retained even when the most expensive subsystem is removed.
+
+\section{Strategy Enhancement Methodology}
+\subsection*{Technical Indicators and Features}
+The enhanced strategies introduced a compact but well-motivated set of indicators:
+\begin{itemize}
+    \item Parkinson volatility over 10 and 60 days to measure short-term and longer-term range-based volatility.
+    \item Amihud illiquidity over 60 days to proxy how much price moves for a given amount of traded dollar volume.
+    \item RSI-14 to identify oversold conditions for the mean-reversion sleeve.
+    \item ATR-14 to scale trailing stops by recent realised range.
+    \item Volume moving average over 20 days to detect volume-supported momentum bursts.
+    \item MA-200 as a long-horizon trend filter to block entries during downtrends.
+\end{itemize}
+
+These features were combined through a two-stage process. First, a cross-sectional universe was formed monthly by ranking each ticker on volatility and illiquidity, then summing the ranks into a composite score. Second, entry signals were generated only inside the selected universe using RSI and volume-based triggers, subject to volatility and trend vetoes. This separation between ``where to look'' and ``when to trade'' is one of the strongest conceptual improvements in the project design.
+
+\subsection*{Earnings Transcript Analysis}
+Versions V1 to V3 incorporated a second entry sleeve based on FinBERT analysis of quarterly earnings call transcripts. Transcripts were trimmed, split into sentence-based chunks, truncated to model limits, and run through a batched sentiment pipeline. The implementation did not rely on a single positive/negative label per transcript. Instead, it aggregated positive, negative, and neutral scores across chunks and derived a net sentiment measure.
+
+The key research feature was not raw positivity, but sentiment acceleration. For each company-quarter pair, the strategy compared the current net sentiment with the previous quarter's value. A buy signal could be issued when sentiment improved quarter-on-quarter and when the stock was not blocked by a downtrend or short-term volatility spike. This is a thoughtful design choice because it treats earnings language as a dynamic signal rather than a static tone classification.
+
+The project documentation also records an important implementation correction: earlier handling of \verb|return_all_scores=True| caused the sentiment sleeve to misread model outputs and effectively remain inactive. Fixing this bug was essential because it transformed the sentiment sleeve from a theoretical idea into a functioning experimental component.
+
+\subsection*{Entry, Exit, and Risk Management Rules}
+The strategy eventually converged on the following decision structure.
+\begin{itemize}
+    \item Entry sleeve 1: Buy when RSI-14 falls below 40, or when a positive daily return occurs alongside a large volume surge relative to the 20-day moving average.
+    \item Entry sleeve 2: Buy on positive sentiment acceleration from the latest earnings transcript, available only in V1--V3.
+    \item Volatility veto: Block entries when short-term Parkinson volatility exceeds 1.75 times the longer-term reference volatility.
+    \item Trend filter: Block selected entries when price is below the 200-day moving average.
+    \item Exit logic: Use ATR-based trailing stops, with sentiment positions in V1--V3 also subject to a maximum holding period.
+    \item Position sizing: Deploy fixed notional position sizes of USD 5,000 per trade from an initial capital base of USD 100,000.
+\end{itemize}
+
+V4 introduced the most mature version of this framework by making risk control bucket-aware. Because the dual-tail universe contains both relatively stable, liquid names and relatively unstable, illiquid names, V4 allowed separate volume and ATR multipliers for bottom-bucket and top-bucket stocks. This is an important methodological refinement because it acknowledges heterogeneity inside the selected universe rather than forcing one parameter set onto fundamentally different security types.
+
+\subsection*{Version-by-Version Development Logic}
+The development path is a sequence of explicit hypothesis pivots rather than incremental tuning.
+
+\textbf{V1 (Low Volatility, Low AMIHUD): establishing the efficient core.}
+The first strategy intentionally selected tickers in the low-volatility, high-liquidity region (bottom composite quartile). This was motivated by EDA showing that high AMIHUD names tend to compress Sharpe quality, while low-volatility cohorts display stronger risk-adjusted behaviour (low-volatility anomaly). V1 therefore prioritised portfolio efficiency first, and it achieved exactly that objective: 290.62\% development return with a 1.99 Sharpe ratio, 19.35\% volatility, and -21.90\% max drawdown.
+
+\textbf{V1 \(\rightarrow\) V2: pivot from efficiency toward return capture.}
+After V1, the research tension was clear. The strategy was efficient, but it under-exposed the illiquidity premium highlighted by EDA. To test return upside directly, V2 inverted the universe filter to the top 25\% composite tail (high volatility, high AMIHUD/illiquidity). The working hypothesis was that illiquidity-driven excess return could outweigh the Sharpe drag from higher volatility. The data confirmed this trade-off: development return rose from 290.62\% to 336.55\% (about 335\%), while risk worsened materially (volatility 19.35\% \(\rightarrow\) 37.03\%, max drawdown -21.90\% \(\rightarrow\) -33.84\%, Sharpe 1.99 \(\rightarrow\) 1.25).
+
+\textbf{V2 \(\rightarrow\) V3: blend strengths and improve portfolio capacity.}
+V2 proved that illiquid names can drive higher raw return, but it also exposed implementation constraints: a high-AMIHUD universe is harder to scale in practice because market impact and slippage rise quickly as capital grows. V3 addressed this by combining both tails (bottom 25\% and top 25\%), blending the high-capacity liquid sleeve with the high-return illiquid sleeve. This design aimed for more robust risk-adjusted outcomes and better real-world capital capacity, while preserving access to the alpha discovered in V2. Empirically, V3 produced the highest development return (560.01\%) and the largest opportunity set (44,131 trades), at the cost of deeper drawdown.
+
+\textbf{V3 \(\rightarrow\) V4: simplify architecture and test dependency on NLP.}
+The final transition removed the sentiment sleeve entirely while preserving dual-tail universe structure and adding bucket-aware parameters. This was a direct marginal-contribution test: if Sharpe quality remained similar without FinBERT, then core alpha was primarily structural/technical rather than NLP-dependent. Results supported this interpretation: V4 retained near-identical development Sharpe (1.67 vs 1.67 in V3) and comparable return, while delivering improved validation drawdown relative to V3.
+
+This progression is methodologically important because every version answers a specific research question: efficiency first (V1), return harvesting via illiquidity premium (V2), blended robustness and scale (V3), then complexity ablation for deployability (V4).
+
+\section{Experimental Results and Analysis}
+\subsection*{Development Phase Experiments}
+The development split from 2000 to 2017 was used to run a structured sequence of experiments. The central theme was not parameter over-search, but theory-guided ablation.
+
+The V1 experiment operationalised the low-volatility, low-AMIHUD hypothesis through a high-liquidity universe plus dual entry sleeves. On development data it achieved a return of 290.62\%, a Sharpe ratio of 1.99, a maximum drawdown of -21.90\%, a win rate of 56.4\%, and 21,619 trades. This established a highly efficient risk-adjusted profile as the starting anchor for subsequent pivots.
+
+The V2 experiment inverted the universe to focus on high-volatility, low-liquidity names. Development return improved to 336.55\%, but the Sharpe ratio fell to 1.25 and volatility rose to 37.03\%. This supported the hypothesis that the high-volatility tail offered stronger upside, but also more instability and larger drawdowns.
+
+The V3 experiment combined both tails into a single dual-tail universe. This produced the highest development return at 560.01\% and expanded the opportunity set to 44,131 trades. However, the higher return came with a large maximum drawdown of -34.09\%, indicating that combining both regimes increased both breadth and risk.
+
+The V4 experiment removed the sentiment sleeve while keeping the dual-tail universe and introducing bucket-aware parameters. Development return remained almost unchanged at 557.07\%, with the same Sharpe ratio as V3 at 1.67 and nearly identical win rate. This is a critical result: most of the strategy's developmental edge appears to have come from universe design and technical execution rather than from transcript sentiment.
+
+\subsection*{Validation Phase Results}
+The validation split from 2018 to 2024 acted as the out-of-sample test of generalisation. V1 delivered a return of 107.50\%, Sharpe 2.10, and drawdown of -15.39\%. V2 substantially improved return to 221.88\% and delivered the highest validation Sharpe at 2.76, albeit with more aggressive universe exposure. V3 achieved the strongest validation return at 253.95\% with Sharpe 2.51, but its drawdown widened to -22.94\%. V4 delivered 227.92\% return, Sharpe 2.48, and a much improved drawdown of -17.30\%.
+
+This pattern is especially informative. V3 is best if the objective is maximum absolute out-of-sample return. V4 is best if the objective is a balanced final system: it preserves most of V3's risk-adjusted performance while removing the most expensive subsystem and materially improving drawdown control.
+
+Table~\ref{tab:results} consolidates the available experimental evidence from the project notes.
+
+\begin{longtable}{@{}lcccccccc@{}}
+\caption{Comparison of strategy versions across development and validation splits}
+\label{tab:results}\\
+\toprule
+Version & Dev Return & Dev Sharpe & Dev Max DD & Dev Win & Dev Vol & Dev Trades & Val Return & Val Sharpe \\
+\midrule
+\endfirsthead
+\toprule
+Version & Dev Return & Dev Sharpe & Dev Max DD & Dev Win & Dev Vol & Dev Trades & Val Return & Val Sharpe \\
+\midrule
+\endhead
+V1 & 290.62\% & 1.99 & -21.90\% & 56.4\% & 19.35\% & 21,619 & 107.50\% & 2.10 \\
+V2 & 336.55\% & 1.25 & -33.84\% & 53.4\% & 37.03\% & 24,248 & 221.88\% & 2.76 \\
+V3 & 560.01\% & 1.67 & -34.09\% & 54.7\% & 33.69\% & 44,131 & 253.95\% & 2.51 \\
+V4 & 557.07\% & 1.67 & -34.25\% & 54.7\% & 33.63\% & 45,327 & 227.92\% & 2.48 \\
+\bottomrule
+\end{longtable}
+
+The available validation drawdowns are V1: -15.39\%, V2: -17.53\%, V3: -22.94\%, and V4: -17.30\%. The supplied source material does not include validation win rate, validation volatility, or a separate test split. Those omissions matter because they limit how completely the final strategy can be benchmarked against the original assignment template. Even so, the documented evidence is sufficient to support a strong comparative conclusion about the relative merits of V1 to V4.
+
+\section{Final Performance Outcomes}
+The final recommended strategy is V4, the technical-only dual-tail configuration. The reason is not that it dominates every single metric, but that it offers the most convincing trade-off among performance, robustness, and operational simplicity.
+
+First, V4 keeps almost all of the out-of-sample quality achieved by V3. The validation Sharpe ratios are essentially equivalent at 2.48 for V4 and 2.51 for V3. The absolute validation return does decline from 253.95\% to 227.92\%, but this reduction is paired with a substantial drawdown improvement from -22.94\% to -17.30\%. For a deployable trading system, that is a meaningful improvement in downside containment.
+
+Second, V4 is more parsimonious. By eliminating the earnings-transcript sleeve, the final strategy removes dependence on GPU-based FinBERT inference, transcript chunking, and prior-quarter sentiment bookkeeping. A simpler strategy with similar Sharpe performance is usually preferable to a more complicated one, because it reduces the chance that historical performance depended on fragile implementation details or data idiosyncrasies.
+
+Third, V4 reflects the most refined risk-management design in the project. It retains the strongest structural idea discovered during experimentation, namely the dual-tail universe, while improving internal calibration through bucket-aware ATR and volume thresholds. That makes the final strategy more interpretable than V3: it explicitly recognises that low-volatility, high-liquidity names and high-volatility, low-liquidity names should not be traded under identical confirmation rules.
+
+The original report template requests all five performance metrics across development, validation, and test datasets together with performance visualisations. Based on the provided materials, only development metrics and partial validation metrics are available, and no separate test-period table or chart assets were included. The most defensible conclusion is therefore as follows: V4 is the preferred final strategy under the evidence currently documented, while V3 remains the strongest reference point for absolute validation return.
+
+\section{Related Work}
+The project design is closely aligned with several strands of prior work in quantitative finance and financial NLP.
+
+At the universe-selection level, the use of the Amihud illiquidity ratio follows the literature that interprets price response per unit of trading volume as a practical proxy for trading frictions and liquidity risk \cite{amihud2002}. The use of Parkinson volatility is similarly grounded in classic work showing that range-based estimators can be more information-efficient than close-to-close volatility when high and low prices are available \cite{parkinson1980}. Combining these two quantities into a composite ranking is a sensible adaptation for cross-sectional stock filtering because it captures both risk environment and ease of trading.
+
+The technical entry and risk-management components draw on established indicator families. RSI and ATR both originate from Wilder's technical analysis framework \cite{wilder1978}. In this project, RSI is used not as a standalone predictor but as one input inside a gated decision architecture, while ATR is used to scale trailing stops by current market conditions rather than by a fixed percentage. The 200-day moving average trend filter reflects a widely used convention in systematic trading for separating supportive and adverse long-term trend regimes.
+
+The sentiment sleeve is motivated by literature showing that financial text requires domain-specific treatment rather than general-purpose sentiment lexicons or off-the-shelf language models. FinBERT is a well-known example of such domain adaptation \cite{araci2019}, while the broader literature on financial text and disclosure tone helps explain why earnings-call language may contain incremental information about expected performance and risk \cite{loughran2011}. The project's use of quarter-on-quarter sentiment acceleration is especially consistent with the idea that changes in managerial tone may matter more than raw tone levels in isolation.
+
+From a research-method viewpoint, the project's strongest alignment with good practice is its use of ablation and split-based validation. Rather than claiming that more inputs are automatically better, the study explicitly tests whether sentiment justifies its added complexity. That mindset is consistent with a robust quantitative-research tradition in which simpler, interpretable strategies are preferred unless more complex models demonstrably improve out-of-sample performance.
+
+\section{Conclusion and Future Work}
+\subsection{Conclusion}
+The project demonstrates a disciplined process for turning EDA hypotheses into a stronger trading system through controlled pivots. The key insight is that alpha was created primarily by better market structuring rather than by ever-larger signal stacks. Monthly universe selection based on volatility and illiquidity materially improved the search space for trades. The dual-tail design then showed that both very stable/liquid names and very unstable/illiquid names can be useful, while the middle of the cross-section appears less informative. Finally, the comparison between V3 and V4 showed that FinBERT sentiment contributed only limited incremental value once the technical and universe components were already strong.
+
+In practical terms, V4 emerged as the most convincing final strategy. It preserved near-best validation Sharpe, kept strong absolute returns, improved drawdown relative to V3, and removed the most computationally expensive subsystem. For a literature-review-style evaluation, that makes V4 the best synthesis of return, robustness, and implementation realism.
+
+\subsection{Future Work}
+\begin{itemize}
+    \item \textbf{Limitations:} The supplied project evidence does not include a separate test split, transaction cost modelling, slippage analysis, or a full runtime benchmark table. These omissions limit how confidently the strategy can be assessed for live deployment.
+    \item \textbf{Challenges Encountered:} The main challenges were computational scale, transcript-processing overhead, and the risk of attributing performance to a sentiment sleeve that was initially affected by an output-parsing bug.
+    \item \textbf{Future Work:} Useful next steps include adding realistic transaction cost assumptions, benchmarking runtime formally, testing sector or regime constraints, expanding sentiment beyond simple acceleration, and comparing bucket-aware technical strategies against richer portfolio construction methods.
+\end{itemize}
+
+\newpage
+\begin{thebibliography}{9}
+
+\bibitem{amihud2002}
+Yakov Amihud.
+\newblock Illiquidity and stock returns: cross-section and time-series effects.
+\newblock \emph{Journal of Financial Markets}, 5(1):31--56, 2002.
+
+\bibitem{parkinson1980}
+Michael Parkinson.
+\newblock The extreme value method for estimating the variance of the rate of return.
+\newblock \emph{Journal of Business}, 53(1):61--65, 1980.
+
+\bibitem{wilder1978}
+J. Welles Wilder.
+\newblock \emph{New Concepts in Technical Trading Systems}.
+\newblock Trend Research, 1978.
+
+\bibitem{araci2019}
+Dogu Araci.
+\newblock FinBERT: Financial sentiment analysis with pre-trained language models.
+\newblock arXiv preprint arXiv:1908.10063, 2019.
+
+\bibitem{loughran2011}
+Tim Loughran and Bill McDonald.
+\newblock When is a liability not a liability? Textual analysis, dictionaries, and 10-Ks.
+\newblock \emph{Journal of Finance}, 66(1):35--65, 2011.
+
+\end{thebibliography}
+
+\newpage
+\section*{Appendices}
+\subsection*{Appendix A: Individual Contributions}
+The provided project materials did not record member-by-member task allocation. This section should be completed by the team before submission, for example by listing responsibility for data engineering, strategy implementation, evaluation, literature review, and report writing.
+
+\subsection*{Appendix B: Declaration of Use of Generative AI Tools}
+This report draft was prepared with the assistance of generative AI tools to synthesise and structure material from the project's own documentation files. All numerical claims in the body of the report were drawn from the provided project sources and should be manually verified by the team before final submission.
+
+\end{document}
