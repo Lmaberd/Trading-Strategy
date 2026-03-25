@@ -54,3 +54,4 @@ Thumbs.db
 # Strategy testing cache (analytics, lookups, sim lookups)
 cache/
 /cache
+/enhanced_strat/auto_versions
