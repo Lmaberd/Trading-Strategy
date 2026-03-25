@@ -30,23 +30,23 @@ class EnhancedStrategy(BaseStrategy):
         rsi_threshold=40,
         vol_mult=2,
         s1_atr_mult=2,
-        s2_atr_mult=2,
-        sleeve2_exit_weeks=5,
-        max_transcript_chars=4000,
+        # s2_atr_mult=2,
+        # sleeve2_exit_weeks=5,
+        # max_transcript_chars=4000,
         park_veto_mult=1.75,
-        bottom_vol_mult=None,
-        top_vol_mult=None,
-        bottom_atr_mult=None,
-        top_atr_mult=None,
+        bottom_vol_mult=1.5,
+        top_vol_mult=2,
+        bottom_atr_mult=2,
+        top_atr_mult=2,
     ):
         # Keep the original constructor shape for notebook compatibility.
         super().__init__(finbert_pipeline)
         self.rsi_threshold = rsi_threshold
         self.vol_mult = vol_mult
         self.s1_atr_mult = s1_atr_mult
-        self.s2_atr_mult = s2_atr_mult
-        self.sleeve2_exit_weeks = sleeve2_exit_weeks
-        self.max_transcript_chars = max_transcript_chars
+        # self.s2_atr_mult = s2_atr_mult
+        # self.sleeve2_exit_weeks = sleeve2_exit_weeks
+        # self.max_transcript_chars = max_transcript_chars
         self.park_veto_mult = park_veto_mult
 
         self.bottom_vol_mult = vol_mult if bottom_vol_mult is None else bottom_vol_mult
@@ -122,14 +122,14 @@ class EnhancedStrategy(BaseStrategy):
 
         df["daily_return"] = daily_return
         df["ma_200"] = (
-            close_rolling.rolling(200, min_periods=50).mean().reset_index(level=0, drop=True)
+            close_rolling.rolling(200, min_periods=200).mean().reset_index(level=0, drop=True)
         )
 
         dollar_volume = df["close"] * df["volume"]
         amihud_daily = daily_return.abs().div(dollar_volume.replace(0, np.nan))
         df["amihud_60"] = (
             amihud_daily.groupby(ticker_index, sort=False)
-            .rolling(60, min_periods=30)
+            .rolling(60, min_periods=60)
             .mean()
             .reset_index(level=0, drop=True)
         )
@@ -152,13 +152,13 @@ class EnhancedStrategy(BaseStrategy):
             park_daily_var = park_daily_var.replace([np.inf, -np.inf], np.nan)
             park_var_10 = (
                 park_daily_var.groupby(ticker_index, sort=False)
-                .rolling(10, min_periods=5)
+                .rolling(10, min_periods=10)
                 .mean()
                 .reset_index(level=0, drop=True)
             )
             park_var_60 = (
                 park_daily_var.groupby(ticker_index, sort=False)
-                .rolling(60, min_periods=30)
+                .rolling(60, min_periods=60)
                 .mean()
                 .reset_index(level=0, drop=True)
             )
@@ -168,17 +168,17 @@ class EnhancedStrategy(BaseStrategy):
             true_range = (df["close"] - prev_close).abs()
             daily_return_rolling = daily_return.groupby(ticker_index, sort=False)
             df["park_vol_10"] = (
-                daily_return_rolling.rolling(10, min_periods=5).std().mul(np.sqrt(252.0))
+                daily_return_rolling.rolling(10, min_periods=10).std().mul(np.sqrt(252.0))
                 .reset_index(level=0, drop=True)
             )
             df["park_vol_60"] = (
-                daily_return_rolling.rolling(60, min_periods=30).std().mul(np.sqrt(252.0))
+                daily_return_rolling.rolling(60, min_periods=60).std().mul(np.sqrt(252.0))
                 .reset_index(level=0, drop=True)
             )
 
         df["atr_14"] = (
             true_range.groupby(ticker_index, sort=False)
-            .rolling(14, min_periods=1)
+            .rolling(14, min_periods=14)
             .mean()
             .reset_index(level=0, drop=True)
         )
@@ -202,7 +202,7 @@ class EnhancedStrategy(BaseStrategy):
         df["rsi_14"] = 100.0 - (100.0 / (1.0 + rs))
 
         df["volume_ma_20"] = (
-            volume_rolling.rolling(20, min_periods=10).mean().reset_index(level=0, drop=True)
+            volume_rolling.rolling(20, min_periods=20).mean().reset_index(level=0, drop=True)
         )
 
         result_df = df[
