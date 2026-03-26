@@ -1,12 +1,6 @@
 """
-EnhancedStrategy V2: High Volatility, High Liquidity Universe
-=============================================================
-Based on V14.2 (Reversed Amihud Parkinson Volatility).
-Universe selection changed to target the MOST volatile and MOST liquid stocks.
-park_vol_60 is ranked descending (high vol = low rank) and amihud_60 is
-ranked ascending (low Amihud = high liquidity = low rank). The bottom 25th
-percentile of the composite score is then selected.
-
+EnhancedStrategy V14: Optimised Parkinson Volatility
+====================================================
 Optimisations applied on top of V13:
 
   1. return_all_scores=True bug (sleeve 2 was completely broken)
@@ -385,10 +379,10 @@ class EnhancedStrategy(BaseStrategy):
         if scored.empty:
             return set()
         scored['vol_rank'] = scored['park_vol_60'].rank(ascending=False, method='average')
-        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=True, method='average')
+        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=False, method='average')
         scored['composite_score'] = scored['vol_rank'] + scored['amihud_rank']
-        threshold = scored['composite_score'].quantile(0.25)
-        return set(scored[scored['composite_score'] <= threshold]['ticker'].tolist())
+        threshold = scored['composite_score'].quantile(0.75)
+        return set(scored[scored['composite_score'] >= threshold]['ticker'].tolist())
 
     def _select_universe_from_latest(self, latest_dict):
         """
@@ -410,12 +404,12 @@ class EnhancedStrategy(BaseStrategy):
         park_valid = park60s[valid]
         amihud_valid = amihud60s[valid]
 
-        vol_rank    = pd.Series(park_valid).rank(ascending=False, method='average').values
-        amihud_rank = pd.Series(amihud_valid).rank(ascending=True,  method='average').values
+        vol_rank    = pd.Series(park_valid).rank(ascending=False,  method='average').values
+        amihud_rank = pd.Series(amihud_valid).rank(ascending=False, method='average').values
         composite   = vol_rank + amihud_rank
-        threshold   = np.quantile(composite, 0.25)
+        threshold   = np.quantile(composite, 0.75)
 
-        return {t for t, s in zip(valid_tickers, composite) if s <= threshold}
+        return {t for t, s in zip(valid_tickers, composite) if s >= threshold}
 
     def _precompute_monthly_universes(self, weekly_df):
         # fix #3: precompute per-ticker sorted arrays, then binary search per month

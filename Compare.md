@@ -51,6 +51,26 @@ Sharpe Ratio: 2.10
 Max Drawdown: -15.39%
 
 ======================================================================
+ENHANCED STRATEGY V18 EVALUATION (Development)
+======================================================================
+
+should be higher sharpe than v1 (FALSE) BUT is v high returns can cut drawdown easily to increase sharpe
+
+
+[DEV SPLIT - For Development]
+Return: 542.76%
+Sharpe Ratio: 1.82
+Max Drawdown: -24.13%
+Win Rate: 54.9%
+Volatility: 29.80%
+Total Trades: 23,952
+
+[VAL SPLIT - Final Performance]
+Return: 185.93%
+Sharpe Ratio: 1.73
+Max Drawdown: -40.48%
+
+======================================================================
 ENHANCED STRATEGY V2 EVALUATION (Development)
 ======================================================================
 
@@ -103,6 +123,24 @@ Return: 221.88%
 Sharpe Ratio: 2.76
 Max Drawdown: -17.53%
 
+======================================================================
+ENHANCED STRATEGY V18.2 EVALUATION (Development)
+======================================================================
+
+should be higher returns than V2 (FALSE) its jsut not good
+
+[DEV SPLIT - For Development]
+Return: 202.05%
+Sharpe Ratio: 1.45
+Max Drawdown: -25.42%
+Win Rate: 55.2%
+Volatility: 22.17%
+Total Trades: 22,099
+
+[VAL SPLIT - Final Performance]
+Return: 94.56%
+Sharpe Ratio: 2.24
+Max Drawdown: -8.83%
 
 ======================================================================
 ENHANCED STRATEGY V3 EVALUATION (Development)
