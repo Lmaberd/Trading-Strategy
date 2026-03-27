@@ -49,7 +49,7 @@ class EnhancedStrategy(BaseStrategy):
 
     def __init__(self, finbert_pipeline=None, rsi_threshold=40, vol_mult=2,
                  s1_atr_mult=2, s2_atr_mult=2, sleeve2_exit_weeks=5,
-                 max_transcript_chars=4000, park_veto_mult=1.75):
+                 max_transcript_chars=2000, park_veto_mult=1.75):
         super().__init__(finbert_pipeline)
         self.rsi_threshold = rsi_threshold
         self.vol_mult = vol_mult
@@ -385,10 +385,10 @@ class EnhancedStrategy(BaseStrategy):
         if scored.empty:
             return set()
         scored['vol_rank'] = scored['park_vol_60'].rank(ascending=False, method='average')
-        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=True, method='average')
+        scored['amihud_rank'] = scored['amihud_60'].rank(ascending=False, method='average')
         scored['composite_score'] = scored['vol_rank'] + scored['amihud_rank']
-        threshold = scored['composite_score'].quantile(0.75)
-        return set(scored[scored['composite_score'] >= threshold]['ticker'].tolist())
+        threshold = scored['composite_score'].quantile(0.25)
+        return set(scored[scored['composite_score'] <= threshold]['ticker'].tolist())
 
     def _select_universe_from_latest(self, latest_dict):
         """
@@ -411,11 +411,11 @@ class EnhancedStrategy(BaseStrategy):
         amihud_valid = amihud60s[valid]
 
         vol_rank    = pd.Series(park_valid).rank(ascending=False, method='average').values
-        amihud_rank = pd.Series(amihud_valid).rank(ascending=True,  method='average').values
+        amihud_rank = pd.Series(amihud_valid).rank(ascending=False,  method='average').values
         composite   = vol_rank + amihud_rank
-        threshold   = np.quantile(composite, 0.75)
+        threshold   = np.quantile(composite, 0.25)
 
-        return {t for t, s in zip(valid_tickers, composite) if s >= threshold}
+        return {t for t, s in zip(valid_tickers, composite) if s <= threshold}
 
     def _precompute_monthly_universes(self, weekly_df):
         # fix #3: precompute per-ticker sorted arrays, then binary search per month

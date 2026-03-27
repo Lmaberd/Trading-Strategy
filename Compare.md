@@ -17,16 +17,16 @@ Precomputing monthly universe snapshots...
 Precomputing transcript sentiment in batched mode...
   Filtering to 223 universe tickers (5,667 transcripts)
   Model converted to FP16 for inference
-  Running FinBERT on 68,912 chunks (batch_size=128)...
-  Precomputed 5,667 transcript sentiments from 68,912 chunks
+  Running FinBERT on 34,507 chunks (batch_size=128)...
+  Precomputed 5,667 transcript sentiments from 34,507 chunks
 Running fast backtest loop...
 You seem to be using the pipelines sequentially on GPU. In order to maximize efficiency please use a dataset
-Return: 290.62%
-Sharpe Ratio: 1.99
-Max Drawdown: -21.90%
-Win Rate: 56.4%
-Volatility: 19.35%
-Total Trades: 21,619
+Return: 297.77%
+Sharpe Ratio: 2.01
+Max Drawdown: -22.23%
+Win Rate: 56.7%
+Volatility: 19.36%
+Total Trades: 21,497
 
 [VAL SPLIT - Final Performance]
 Loading VAL split data...
@@ -43,35 +43,72 @@ Precomputing monthly universe snapshots...
 Precomputing transcript sentiment in batched mode...
   Filtering to 210 universe tickers (5,138 transcripts)
   Model converted to FP16 for inference
-  Running FinBERT on 63,041 chunks (batch_size=128)...
-  Precomputed 5,138 transcript sentiments from 63,041 chunks
+  Running FinBERT on 31,842 chunks (batch_size=128)...
+  Precomputed 5,138 transcript sentiments from 31,842 chunks
 Running fast backtest loop...
-Return: 107.50%
-Sharpe Ratio: 2.10
-Max Drawdown: -15.39%
-
-======================================================================
-ENHANCED STRATEGY V18 EVALUATION (Development)
-======================================================================
-
-should be higher sharpe than v1 (FALSE) BUT is v high returns can cut drawdown easily to increase sharpe
-
-
-[DEV SPLIT - For Development]
-Return: 542.76%
-Sharpe Ratio: 1.82
-Max Drawdown: -24.13%
-Win Rate: 54.9%
-Volatility: 29.80%
-Total Trades: 23,952
-
-[VAL SPLIT - Final Performance]
-Return: 185.93%
-Sharpe Ratio: 1.73
-Max Drawdown: -40.48%
+Return: 110.54%
+Sharpe Ratio: 2.14
+Max Drawdown: -14.03%
+Win Rate: 55.76%
+Volatility: 25.59%
+Total Trades: 9383
 
 ======================================================================
 ENHANCED STRATEGY V2 EVALUATION (Development)
+======================================================================
+
+[DEV SPLIT - For Development]
+Loading DEV split data...
+Cleaning and preprocessing data...
+Data ready: 1,332,576 price records
+Running evaluation...
+Computing advanced technicals using fully vectorized Pandas groupby...
+  Analytics computed: 1,332,576 rows for 340 tickers
+Aligning analytics to weekly schedule...
+  Weekly analytics aligned: 276,363 rows
+Precomputing monthly universe snapshots...
+  Universe snapshots ready for 214 months
+  Universe covers 253 unique tickers across all months (out of 340 total)
+Precomputing transcript sentiment in batched mode...
+  Filtering to 253 universe tickers (6,126 transcripts)
+  Model converted to FP16 for inference
+  Running FinBERT on 37,303 chunks (batch_size=128)...
+  Precomputed 6,126 transcript sentiments from 37,303 chunks
+Running fast backtest loop...
+Return: 537.29%
+Sharpe Ratio: 1.81
+Max Drawdown: -24.13%
+Win Rate: 54.9%
+Volatility: 29.78%
+Total Trades: 23,888
+
+[VAL SPLIT - Final Performance]
+Loading VAL split data...
+Cleaning and preprocessing data...
+Data ready: 598,740 price records
+Running evaluation...
+Computing advanced technicals using fully vectorized Pandas groupby...
+  Analytics computed: 598,740 rows for 340 tickers
+Aligning analytics to weekly schedule...
+  Weekly analytics aligned: 124,100 rows
+Precomputing monthly universe snapshots...
+  Universe snapshots ready for 82 months
+  Universe covers 194 unique tickers across all months (out of 340 total)
+Precomputing transcript sentiment in batched mode...
+  Filtering to 194 universe tickers (4,493 transcripts)
+  Model converted to FP16 for inference
+  Running FinBERT on 27,867 chunks (batch_size=128)...
+  Precomputed 4,493 transcript sentiments from 27,867 chunks
+Running fast backtest loop...
+Return: 188.43%
+Sharpe Ratio: 2.23
+Max Drawdown: -22.89%
+Win Rate: 54.76%
+Volatility: 35.70%
+Total Trades: 10288
+
+======================================================================
+ENHANCED STRATEGY V3 EVALUATION (Development)
 ======================================================================
 
 [DEV SPLIT - For Development]
@@ -92,13 +129,12 @@ Precomputing transcript sentiment in batched mode...
   Running FinBERT on 99,672 chunks (batch_size=128)...
   Precomputed 8,210 transcript sentiments from 99,672 chunks
 Running fast backtest loop...
-You seem to be using the pipelines sequentially on GPU. In order to maximize efficiency please use a dataset
-Return: 336.55%
+Return: 336.28%
 Sharpe Ratio: 1.25
-Max Drawdown: -33.84%
-Win Rate: 53.4%
-Volatility: 37.03%
-Total Trades: 24,248
+Max Drawdown: -33.59%
+Win Rate: 53.3%
+Volatility: 37.01%
+Total Trades: 24,229
 
 
 [VAL SPLIT - Final Performance]
@@ -119,79 +155,12 @@ Precomputing transcript sentiment in batched mode...
   Running FinBERT on 75,145 chunks (batch_size=128)...
   Precomputed 6,118 transcript sentiments from 75,145 chunks
 Running fast backtest loop...
-Return: 221.88%
-Sharpe Ratio: 2.76
-Max Drawdown: -17.53%
-
-======================================================================
-ENHANCED STRATEGY V18.2 EVALUATION (Development)
-======================================================================
-
-should be higher returns than V2 (FALSE) its jsut not good
-
-[DEV SPLIT - For Development]
-Return: 202.05%
-Sharpe Ratio: 1.45
-Max Drawdown: -25.42%
-Win Rate: 55.2%
-Volatility: 22.17%
-Total Trades: 22,099
-
-[VAL SPLIT - Final Performance]
-Return: 94.56%
-Sharpe Ratio: 2.24
-Max Drawdown: -8.83%
-
-======================================================================
-ENHANCED STRATEGY V3 EVALUATION (Development)
-======================================================================
-[DEV SPLIT - For Development]
-Loading DEV split data...
-Cleaning and preprocessing data...
-Data ready: 1,332,576 price records
-Running evaluation...
-Computing advanced technicals using fully vectorized Pandas groupby...
-  Analytics computed: 1,332,576 rows for 340 tickers
-Aligning analytics to weekly schedule...
-  Weekly analytics aligned: 276,363 rows
-Precomputing monthly universe snapshots...
-  Universe snapshots ready for 214 months
-  Universe covers 332 unique tickers across all months (out of 340 total)
-Precomputing transcript sentiment in batched mode...
-  Filtering to 332 universe tickers (9,464 transcripts)
-  Model converted to FP16 for inference
-  Running FinBERT on 114,914 chunks (batch_size=128)...
-  Precomputed 9,464 transcript sentiments from 114,914 chunks
-Running fast backtest loop...
-You seem to be using the pipelines sequentially on GPU. In order to maximize efficiency please use a dataset
-Return: 560.01%
-Sharpe Ratio: 1.67
-Max Drawdown: -34.09%
-Win Rate: 54.7%
-Volatility: 33.69%
-Total Trades: 44,131
-
-[VAL SPLIT - Final Performance]
-Loading VAL split data...
-Cleaning and preprocessing data...
-Data ready: 598,740 price records
-Running evaluation...
-Computing advanced technicals using fully vectorized Pandas groupby...
-  Analytics computed: 598,740 rows for 340 tickers
-Aligning analytics to weekly schedule...
-  Weekly analytics aligned: 124,100 rows
-Precomputing monthly universe snapshots...
-  Universe snapshots ready for 82 months
-  Universe covers 332 unique tickers across all months (out of 340 total)
-Precomputing transcript sentiment in batched mode...
-  Filtering to 332 universe tickers (8,371 transcripts)
-  Model converted to FP16 for inference
-  Running FinBERT on 102,849 chunks (batch_size=128)...
-  Precomputed 8,371 transcript sentiments from 102,849 chunks
-Running fast backtest loop...
-Return: 253.95%
-Sharpe Ratio: 2.51
-Max Drawdown: -22.94%
+Return: 218.75%
+Sharpe Ratio: 2.73
+Max Drawdown: -16.10%
+Win Rate: 55.69%
+Volatility: 31.20%
+Total Trades: 10586
 
 ======================================================================
 ENHANCED STRATEGY V4 EVALUATION (Development)
@@ -209,13 +178,66 @@ Aligning analytics to weekly schedule...
 Precomputing monthly universe snapshots...
   Universe snapshots ready for 213 months
   Universe covers 331 unique tickers across all months (out of 340 total)
+Precomputing transcript sentiment in batched mode...
+  Filtering to 331 universe tickers (9,289 transcripts)
+  Model converted to FP16 for inference
+  Running FinBERT on 112,197 chunks (batch_size=128)...
+  Precomputed 9,289 transcript sentiments from 112,197 chunks
 Running fast backtest loop...
-Return: 557.07%
-Sharpe Ratio: 1.67
-Max Drawdown: -34.25%
-Win Rate: 54.7%
-Volatility: 33.63%
-Total Trades: 45,327
+Return: 670.83%
+Sharpe Ratio: 1.72
+Max Drawdown: -30.14%
+Win Rate: 54.1%
+Volatility: 35.58%
+Total Trades: 39,868
+
+[VAL SPLIT - Final Performance]
+Loading VAL split data...
+Cleaning and preprocessing data...
+Data ready: 598,740 price records
+Running evaluation...
+Computing advanced technicals using fully vectorized Pandas groupby...
+  Analytics computed: 598,740 rows for 340 tickers
+Aligning analytics to weekly schedule...
+  Weekly analytics aligned: 124,100 rows
+Precomputing monthly universe snapshots...
+  Universe snapshots ready for 81 months
+  Universe covers 311 unique tickers across all months (out of 340 total)
+Precomputing transcript sentiment in batched mode...
+  Filtering to 311 universe tickers (7,715 transcripts)
+  Model converted to FP16 for inference
+  Running FinBERT on 94,784 chunks (batch_size=128)...
+  Precomputed 7,715 transcript sentiments from 94,784 chunks
+Running fast backtest loop...
+Return: 280.93%
+Sharpe Ratio: 2.76
+Max Drawdown: -21.69%
+Win Rate: 54.48%
+Volatility: 35.83%
+Total Trades: 16375
+
+======================================================================
+ENHANCED STRATEGY V5 EVALUATION (Development)
+======================================================================
+[DEV SPLIT - For Development]
+Loading DEV split data...
+Cleaning and preprocessing data...
+Data ready: 1,332,576 price records
+Running evaluation...
+Computing advanced technicals using fully vectorized Pandas groupby...
+  Analytics computed: 1,332,576 rows for 340 tickers
+Aligning analytics to weekly schedule...
+  Weekly analytics aligned: 276,363 rows
+Precomputing monthly universe snapshots...
+  Universe snapshots ready for 213 months
+  Universe covers 331 unique tickers across all months (out of 340 total)
+Running fast backtest loop...
+Return: 678.92%
+Sharpe Ratio: 1.75
+Max Drawdown: -30.14%
+Win Rate: 54.4%
+Volatility: 35.02%
+Total Trades: 39,066
 
 
 [VAL SPLIT - Final Performance]
@@ -229,8 +251,11 @@ Aligning analytics to weekly schedule...
   Weekly analytics aligned: 124,100 rows
 Precomputing monthly universe snapshots...
   Universe snapshots ready for 81 months
-  Universe covers 331 unique tickers across all months (out of 340 total)
+  Universe covers 311 unique tickers across all months (out of 340 total)
 Running fast backtest loop...
-Return: 227.92%
-Sharpe Ratio: 2.48
-Max Drawdown: -17.30%
+Return: 263.40%
+Sharpe Ratio: 2.80
+Max Drawdown: -19.81%
+Win Rate: 54.94%
+Volatility: 33.93%
+Total Trades: 16163
